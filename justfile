@@ -10,9 +10,11 @@ pack:
     wasm-pack build --target web
 
 # Requires RustRover
-file_dir := "http://localhost:63342/bl0ck/index.html?_ijt=6adftqhk5fvj3fik73h0ri92c0&_ij_reload=RELOAD_ON_SAVE"
+file_dir := "http://localhost:8080"
+
 browse:
-    just _browse-{{os()}}
+    just _browse-{{os()}} 
+    php -S localhost:8080
 
 _browse-macos:
     open {{file_dir}}
@@ -22,3 +24,8 @@ _browse-linux:
 
 _browse-windows:
     start {{file_dir}}
+
+
+web:
+    just pack
+    just browse
