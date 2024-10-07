@@ -21,6 +21,8 @@ struct State<'a> {
     // window's resources.
     // src: learn wgpu
     window: &'a Window,
+    
+    clear_color: wgpu::Color
 }
 
 impl<'a> State<'a> {
@@ -102,6 +104,7 @@ impl<'a> State<'a> {
             queue,
             config,
             size,
+            clear_color: wgpu::Color::RED
         }
     }
 
@@ -121,6 +124,20 @@ impl<'a> State<'a> {
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
+        match event {
+            WindowEvent::CursorMoved { device_id, position } => {
+                dbg!(position);
+                self.clear_color = wgpu::Color {
+                        r: position.x / (self.window.inner_size().width as f64),
+                        g: 0.2,
+                        b: position.y / (self.window.inner_size().height as f64),
+                        a: 1.0
+                };
+                return true;
+            },
+            _ => {}
+        }
+        
         false
     }
 
@@ -142,12 +159,7 @@ impl<'a> State<'a> {
                 view: &view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.1,
-                        g: 0.2,
-                        b: 0.3,
-                        a: 1.0
-                    }),
+                    load: wgpu::LoadOp::Clear(self.clear_color),
                     store: wgpu::StoreOp::Store,
                 }
             })],
