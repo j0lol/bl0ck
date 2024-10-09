@@ -8,20 +8,21 @@ use winit::{
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-struct State<'a> {
-    surface: wgpu::Surface<'a>,
+struct State<'srfc> {
+    surface: wgpu::Surface<'srfc>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
+    render_pipeline: wgpu::RenderPipeline,
 
     // Window must be declared after surface
     // so it gets dropped after it
     // The surface contains unsafe references to the
     // window's resources.
     // src: learn wgpu
-    window: &'a Window,
-    
+    window: &'srfc Window,
+
     clear_color: wgpu::Color
 }
 
@@ -97,6 +98,56 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 2,
         };
 
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into())
+        });
+
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[],
+                push_constant_ranges: &[]
+            });
+        
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vs_main",
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false
+            },
+            multiview: None,
+            cache: None,
+        });
+
         Self {
             window,
             surface,
@@ -104,7 +155,13 @@ impl<'a> State<'a> {
             queue,
             config,
             size,
-            clear_color: wgpu::Color::RED
+            render_pipeline,
+            clear_color: wgpu::Color {
+                r: 0.1,
+                g: 0.2,
+                b: 0.3,
+                a: 1.0
+            }
         }
     }
 
@@ -131,13 +188,13 @@ impl<'a> State<'a> {
                         r: position.x / (self.window.inner_size().width as f64),
                         g: 0.2,
                         b: position.y / (self.window.inner_size().height as f64),
-                        a: 1.0
+                        a: 0.1
                 };
                 return true;
             },
             _ => {}
         }
-        
+
         false
     }
 
@@ -153,7 +210,7 @@ impl<'a> State<'a> {
             label: Some("Render Encoder")
         });
 
-        let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &view,
@@ -167,6 +224,9 @@ impl<'a> State<'a> {
             occlusion_query_set: None,
             timestamp_writes: None,
         });
+        
+        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.draw(0..3, 0..1);
 
         // drop render pass before we submit to drop the mut borrow on encoder
         drop(render_pass);
@@ -210,7 +270,7 @@ pub async fn run() {
                 Some(())
             })
             .expect("Couldn't append canvas to document body.");
-        
+
         let _ = window.request_inner_size(PhysicalSize::new(450, 400));
     }
 
@@ -239,11 +299,11 @@ pub async fn run() {
                     }
                     WindowEvent::RedrawRequested => {
                         state.window().request_redraw();
-                        
+
                         if !surface_configured {
                             return;
                         }
-                        
+
                         state.update();
                         match state.render() {
                             Ok(_) => {}
