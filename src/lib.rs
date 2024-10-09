@@ -1,3 +1,4 @@
+use wgpu::{util::RenderEncoder, BufferSlice, ShaderStages};
 use winit::{
     event::*,
     event_loop::EventLoop,
@@ -14,7 +15,7 @@ struct State<'srfc> {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
-    render_pipeline: wgpu::RenderPipeline,
+    render_pipeline: (wgpu::RenderPipeline, wgpu::RenderPipeline),
 
     // Window must be declared after surface
     // so it gets dropped after it
@@ -23,7 +24,8 @@ struct State<'srfc> {
     // src: learn wgpu
     window: &'srfc Window,
 
-    clear_color: wgpu::Color
+    clear_color: wgpu::Color,
+    toggle_space: bool,
 }
 
 impl<'a> State<'a> {
@@ -147,6 +149,45 @@ impl<'a> State<'a> {
             multiview: None,
             cache: None,
         });
+        
+        
+        let render_pipeline_two = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vs_main",
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fs_main_two",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false
+            },
+            multiview: None,
+            cache: None,
+        });
 
         Self {
             window,
@@ -155,13 +196,14 @@ impl<'a> State<'a> {
             queue,
             config,
             size,
-            render_pipeline,
+            render_pipeline: (render_pipeline, render_pipeline_two),
             clear_color: wgpu::Color {
                 r: 0.1,
                 g: 0.2,
                 b: 0.3,
                 a: 1.0
-            }
+            },
+            toggle_space: false,
         }
     }
 
@@ -192,6 +234,14 @@ impl<'a> State<'a> {
                 };
                 return true;
             },
+            WindowEvent::KeyboardInput { device_id, event, is_synthetic } => {
+                if event.state == ElementState::Pressed {
+                    return match event.physical_key {
+                        PhysicalKey::Code(KeyCode::Space) => { self.toggle_space = !self.toggle_space; true }
+                        _ => { false }
+                    }
+                }
+            }
             _ => {}
         }
 
@@ -225,7 +275,11 @@ impl<'a> State<'a> {
             timestamp_writes: None,
         });
         
-        render_pass.set_pipeline(&self.render_pipeline);
+        if self.toggle_space {
+            render_pass.set_pipeline(&self.render_pipeline.1);
+        } else {
+            render_pass.set_pipeline(&self.render_pipeline.0);
+        }
         render_pass.draw(0..3, 0..1);
 
         // drop render pass before we submit to drop the mut borrow on encoder
