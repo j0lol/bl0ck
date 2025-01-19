@@ -1,5 +1,4 @@
 use image::GenericImageView;
-use miette::{IntoDiagnostic, Report, Result};
 
 pub struct Texture {
     #[allow(unused)]
@@ -14,9 +13,9 @@ impl Texture {
         queue: &wgpu::Queue,
         bytes: &[u8],
         label: &str,
-    ) -> Result<Self> {
-        let img = image::load_from_memory(bytes).into_diagnostic()?;
-        Self::from_image(device, queue, &img, Some(label))
+    ) -> Result<Self, image::ImageError> {
+        let img = image::load_from_memory(bytes)?;
+        Ok(Self::from_image(device, queue, &img, Some(label)))
     }
 
     fn from_image(
@@ -24,7 +23,7 @@ impl Texture {
         queue: &wgpu::Queue,
         img: &image::DynamicImage,
         label: Option<&str>,
-    ) -> Result<Self> {
+    ) -> Self {
         let rgba = img.to_rgba8();
         let dimensions = img.dimensions();
 
@@ -76,6 +75,6 @@ impl Texture {
             }
         );
 
-        Ok(Self { texture, view, sampler })
+        Self { texture, view, sampler }
     }
 }
