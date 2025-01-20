@@ -164,7 +164,7 @@ impl<'a> State<'a> {
         #[cfg(not(target_arch = "wasm32"))]
         let size = window.inner_size();
         #[cfg(target_arch = "wasm32")]
-        let size = PhysicalSize {
+        let size = winit::dpi::PhysicalSize {
             width: 100,
             height: 100,
         };
