@@ -1,9 +1,9 @@
 #![allow(rust_analyzer::inactive_code)]
 
 mod camera;
-mod texture;
 mod model;
 mod resources;
+mod texture;
 
 use model::Vertex;
 use wgpu::util::DeviceExt;
@@ -74,7 +74,7 @@ impl InstanceRaw {
     }
 }
 
-const NUM_INSTANCES_PER_ROW: u32 = 1000;
+const NUM_INSTANCES_PER_ROW: u32 = 100;
 const INSTANCE_DISPLACEMENT: Vec3 = vec3(
     NUM_INSTANCES_PER_ROW as f32 * 0.1,
     0.0,
@@ -88,6 +88,7 @@ struct State<'srfc> {
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
+    wireframe_render_pipeline: Option<wgpu::RenderPipeline>,
     diffuse_bind_group: wgpu::BindGroup,
     diffuse_texture: texture::Texture,
     depth_texture: texture::Texture,
@@ -98,6 +99,7 @@ struct State<'srfc> {
     camera_bind_group: wgpu::BindGroup,
     instances: Vec<Instance>,
     instance_buffer: wgpu::Buffer,
+    wireframe: bool,
 
     // Window must be declared after surface
     // so it gets dropped after it
@@ -107,6 +109,7 @@ struct State<'srfc> {
     window: &'srfc Window,
 
     clear_color: wgpu::Color,
+    obj_model: model::Model,
 }
 
 impl<'a> State<'a> {
@@ -115,8 +118,8 @@ impl<'a> State<'a> {
         let size = window.inner_size();
         #[cfg(target_arch = "wasm32")]
         let size = winit::dpi::PhysicalSize {
-            width: 100,
-            height: 100,
+            width: 400,
+            height: 300,
         };
 
         // 0 size can cause app to crash, better to enforce this maybe.
@@ -150,10 +153,14 @@ impl<'a> State<'a> {
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    required_features: wgpu::Features::empty(),
+                    required_features: if adapter.get_info().backend == wgpu::Backend::Gl {
+                        wgpu::Features::empty()
+                    } else {
+                        wgpu::Features::POLYGON_MODE_LINE
+                    },
 
                     // WebGL does not support all of wgpu's features
-                    required_limits: if cfg!(target_arch = "wasm32") {
+                    required_limits: if adapter.get_info().backend == wgpu::Backend::Gl {
                         wgpu::Limits::downlevel_webgl2_defaults()
                     } else {
                         wgpu::Limits::default()
@@ -278,20 +285,20 @@ impl<'a> State<'a> {
             label: Some("camera_bind_group"),
         });
 
-        let instances = (0..NUM_INSTANCES_PER_ROW)
-            .flat_map(|z| {
-                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let position = vec3(x as f32, 0.0, z as f32) - INSTANCE_DISPLACEMENT;
+        const SPACE_BETWEEN: f32 = 3.0;
+        let instances = itertools::iproduct!(0..NUM_INSTANCES_PER_ROW, 0..NUM_INSTANCES_PER_ROW)
+            .map(|(x, z)| {
+                let mapping = |n| SPACE_BETWEEN * (n as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
+                let position = vec3(mapping(x), 0.0, mapping(z));
 
-                    // this is needed so an object at (0, 0, 0) won't get scaled to zero
-                    // as Quaternions can affect scale if they're not created correctly
-                    let rotation = match position.try_normalize() {
-                        Some(position) => Quat::from_axis_angle(position, 45.0),
-                        None => Quat::from_axis_angle(Vec3::Z, 0.0),
-                    };
+                // this is needed so an object at (0, 0, 0) won't get scaled to zero
+                // as Quaternions can affect scale if they're not created correctly
+                let rotation = match position.try_normalize() {
+                    Some(position) => Quat::from_axis_angle(position, 45.0),
+                    None => Quat::from_axis_angle(Vec3::Z, 0.0),
+                };
 
-                    Instance { position, rotation }
-                })
+                Instance { position, rotation }
             })
             .collect::<Vec<_>>();
 
@@ -301,6 +308,11 @@ impl<'a> State<'a> {
             contents: bytemuck::cast_slice(&instance_data),
             usage: wgpu::BufferUsages::VERTEX,
         });
+
+        let obj_model =
+            resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
+                .await
+                .unwrap();
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
@@ -314,61 +326,72 @@ impl<'a> State<'a> {
                 push_constant_ranges: &[],
             });
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: "vs_main",
-                buffers: &[model::ModelVertex::desc(), InstanceRaw::desc()],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: texture::Texture::DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
-        });
+        let render_pipeline = |polygon_mode: wgpu::PolygonMode| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Render Pipeline"),
+                layout: Some(&render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: "vs_main",
+                    buffers: &[model::ModelVertex::desc(), InstanceRaw::desc()],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: "fs_main",
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    polygon_mode,
+                    unclipped_depth: false,
+                    conservative: false,
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: texture::Texture::DEPTH_FORMAT,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                multiview: None,
+                cache: None,
+            })
+        };
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let fill_pipeline = render_pipeline(wgpu::PolygonMode::Fill);
+        let wireframe_render_pipeline = if (device.features() & wgpu::Features::POLYGON_MODE_LINE)
+            == wgpu::Features::POLYGON_MODE_LINE
+        {
+            Some(render_pipeline(wgpu::PolygonMode::Line))
+        } else {
+            None
+        };
 
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        //         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //             label: Some("Vertex Buffer"),
+        //             contents: bytemuck::cast_slice(VERTICES),
+        //             usage: wgpu::BufferUsages::VERTEX,
+        //         });
+        //
+        //         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //             label: Some("Index Buffer"),
+        //             contents: bytemuck::cast_slice(INDICES),
+        //             usage: wgpu::BufferUsages::INDEX,
+        //         });
 
         let num_indices = INDICES.len() as u32;
 
@@ -379,9 +402,11 @@ impl<'a> State<'a> {
             queue,
             config,
             size,
-            render_pipeline,
+            render_pipeline: fill_pipeline,
+            wireframe_render_pipeline,
             diffuse_bind_group,
             diffuse_texture,
+            obj_model,
             camera,
             camera_controller,
             camera_uniform,
@@ -390,6 +415,7 @@ impl<'a> State<'a> {
             instances,
             instance_buffer,
             depth_texture,
+            wireframe: false,
             clear_color: wgpu::Color {
                 r: 0.1,
                 g: 0.2,
@@ -431,6 +457,26 @@ impl<'a> State<'a> {
                     a: 0.1,
                 };
                 return true;
+            }
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        state,
+                        physical_key: PhysicalKey::Code(keycode),
+                        ..
+                    },
+                ..
+            } => {
+                let is_pressed = *state == ElementState::Pressed;
+                match *keycode {
+                    KeyCode::KeyL => {
+                        if is_pressed {
+                            self.wireframe = !self.wireframe;
+                            return true;
+                        }
+                    }
+                    _ => {}
+                }
             }
             _ => {}
         }
@@ -483,17 +529,21 @@ impl<'a> State<'a> {
             timestamp_writes: None,
         });
 
-        render_pass.set_pipeline(&self.render_pipeline);
-
-        render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-        render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-
-        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+        render_pass.set_pipeline(if self.wireframe {
+            self.wireframe_render_pipeline
+                .as_ref()
+                .unwrap_or(&self.render_pipeline)
+        } else {
+            &self.render_pipeline
+        });
 
-        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
-        render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
+        use model::DrawModel;
+        render_pass.draw_model_instanced(
+            &self.obj_model,
+            0..self.instances.len() as u32,
+            &self.camera_bind_group,
+        );
 
         // drop render pass before we submit to drop the mut borrow on encoder
         drop(render_pass);
