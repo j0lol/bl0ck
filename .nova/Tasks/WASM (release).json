@@ -2,7 +2,7 @@
   "actions" : {
     "build" : {
       "enabled" : true,
-      "script" : "wasm-pack build --target web --dev"
+      "script" : "wasm-pack build --target web"
     }
   }
 }
