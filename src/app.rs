@@ -1,6 +1,4 @@
-mod gfx_state;
-
-use gfx_state::{Gfx, GfxBuilder, MaybeGfx};
+use crate::gfx::{Gfx, GfxBuilder, MaybeGfx};
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
@@ -10,7 +8,7 @@ use winit::{
     window::{Window, WindowAttributes, WindowId},
 };
 
-const WASM_WIN_SIZE: (u32, u32) = (640, 480);
+pub(crate) const WASM_WIN_SIZE: (u32, u32) = (640, 480);
 
 // TODO citation:
 // https://github.com/Bentebent/rita/ for winit 29.0->30.0 migration

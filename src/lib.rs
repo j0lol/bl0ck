@@ -1,10 +1,7 @@
 #![allow(rust_analyzer::inactive_code)]
 
-mod camera;
-mod model;
-mod resources;
-mod texture;
 mod app;
+mod gfx;
 
 use wasm_bindgen::UnwrapThrowExt;
 use winit::{

@@ -1,3 +1,8 @@
+mod camera;
+mod model;
+mod resources;
+mod texture;
+
 use std::sync::Arc;
 
 use glam::{vec3, Quat, Vec3};
@@ -5,7 +10,8 @@ use wgpu::util::DeviceExt;
 use winit::{dpi::PhysicalSize, event::{ElementState, KeyEvent, WindowEvent}, event_loop::EventLoopProxy, keyboard::{KeyCode, PhysicalKey}, window::Window};
 
 use crate::{
-    app::WASM_WIN_SIZE, camera, model::{self, Vertex}, resources, texture, Instance, InstanceRaw, NUM_INSTANCES_PER_ROW
+    app::WASM_WIN_SIZE,
+    gfx::model::Vertex, Instance, InstanceRaw, NUM_INSTANCES_PER_ROW
 };
 
 struct CameraState {
@@ -165,7 +171,7 @@ impl Gfx {
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &surface_config, "depth_texture");
 
-        let diffuse_bytes = include_bytes!("../happy-tree.png");
+        let diffuse_bytes = include_bytes!("../res/happy-tree.png");
         let diffuse_texture =
             texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "happy_tree.png").unwrap();
 
@@ -285,7 +291,7 @@ impl Gfx {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shader.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
         let render_pipeline_layout =
@@ -433,7 +439,7 @@ impl Gfx {
             &self.render_pipeline.0
         });
 
-        use crate::model::DrawModel;
+        use crate::gfx::model::DrawModel;
         render_pass.draw_model_instanced(
             &self.object.model,
             0..self.object.instances.len() as u32,
