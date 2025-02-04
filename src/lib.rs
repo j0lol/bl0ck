@@ -3,8 +3,9 @@
 mod app;
 mod gfx;
 mod map;
+mod gui;
 
-use glam::{Mat3, Mat4, Quat, Vec3};
+use glam::{Mat3, Quat, Vec3};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::UnwrapThrowExt;

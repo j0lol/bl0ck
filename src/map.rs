@@ -27,8 +27,8 @@ pub struct Chunk {
 #[repr(u32)]
 pub enum Block {
     #[default]
-    AIR = 0,
-    BRICK,
+    Air = 0,
+    Brick,
 }
 
 fn new_chunk(world_x: i32, world_z: i32) -> Chunk {
@@ -45,7 +45,7 @@ fn new_chunk(world_x: i32, world_z: i32) -> Chunk {
         // Pretty arbitrary numbers! Just trying to get something interesting
         let n = (((sines / 4. + 0.5) * CHUNK_SIZE.2 as f32).round() as i32) <= y as _;
         sl3set(&mut blocks, x, y, z, {
-            if n { Block::BRICK } else { Block::AIR }
+            if n { Block::Brick } else { Block::Air }
         });
     }
 

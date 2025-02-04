@@ -5,6 +5,7 @@ mod texture;
 
 use std::sync::Arc;
 
+use egui_wgpu::ScreenDescriptor;
 use glam::{vec3, Quat, Vec3};
 use wgpu::util::DeviceExt;
 use winit::{
@@ -15,7 +16,13 @@ use winit::{
     window::Window,
 };
 
-use crate::{app::WASM_WIN_SIZE, gfx::model::Vertex, map::{sl3get, Block, CHUNK_SIZE}, Instance, InstanceRaw};
+use crate::{
+    app::WASM_WIN_SIZE,
+    gfx::model::Vertex,
+    gui::EguiRenderer,
+    map::{sl3get, Block, CHUNK_SIZE},
+    Instance, InstanceRaw,
+};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -59,7 +66,7 @@ struct LightState {
     bind_group: wgpu::BindGroup,
 }
 
-struct RenderPipelines {
+pub struct RenderPipelines {
     camera: wgpu::RenderPipeline,
     camera_wireframe: Option<wgpu::RenderPipeline>,
     light: wgpu::RenderPipeline,
@@ -168,12 +175,12 @@ fn create_render_pipeline(
 }
 
 pub struct Gfx {
-    surface: wgpu::Surface<'static>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    surface_config: wgpu::SurfaceConfiguration,
-    render_pipelines: RenderPipelines,
-    depth_texture: texture::Texture,
+    pub surface: wgpu::Surface<'static>,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    pub surface_config: wgpu::SurfaceConfiguration,
+    pub render_pipelines: RenderPipelines,
+    pub depth_texture: texture::Texture,
 
     object: ObjectState,
     camera: CameraState,
@@ -288,7 +295,6 @@ impl Gfx {
                 label: Some("texture_bind_group_layout"),
             });
 
-
         let camera = camera::Camera {
             eye: vec3(50., 20., 50.),
             target: Vec3::ZERO,
@@ -346,28 +352,32 @@ impl Gfx {
         for (coords, chunk) in map.chunks {
             let _3diter = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2);
 
-            let mut i = _3diter.filter_map(|(x,y,z)| {
+            let mut i = _3diter
+                .filter_map(|(x, y, z)| {
+                    if let Block::Air = sl3get(&chunk.blocks, x, y, z) {
+                        return None;
+                    }
 
-                if let Block::AIR = sl3get(&chunk.blocks, x, y, z) {
-                    return None;
-                }
+                    let chunk_offset = coords.as_vec2() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
 
-                let chunk_offset = coords.as_vec2() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
+                    let mapping = |n| SPACE_BETWEEN * (n as f32 - CHUNK_SIZE.0 as f32 / 2.0);
+                    let position = vec3(
+                        mapping(x) + chunk_offset.x,
+                        -mapping(y),
+                        mapping(z) + chunk_offset.y,
+                    );
 
-                let mapping = |n| SPACE_BETWEEN * (n as f32 - CHUNK_SIZE.0 as f32 / 2.0);
-                let position = vec3(mapping(x) + chunk_offset.x, -mapping(y), mapping(z) + chunk_offset.y);
+                    // this is needed so an object at (0, 0, 0) won't get scaled to zero
+                    // as Quaternions can affect scale if they're not created correctly
+                    // let rotation = match position.try_normalize() {
+                    //     Some(position) => Quat::from_axis_angle(position, 45.0),
+                    //     _ => Quat::from_axis_angle(Vec3::Z, 0.0),
+                    // };
+                    let rotation = Quat::from_axis_angle(Vec3::Y, 0.0);
 
-                // this is needed so an object at (0, 0, 0) won't get scaled to zero
-                // as Quaternions can affect scale if they're not created correctly
-                // let rotation = match position.try_normalize() {
-                //     Some(position) => Quat::from_axis_angle(position, 45.0),
-                //     _ => Quat::from_axis_angle(Vec3::Z, 0.0),
-                // };
-                let rotation = Quat::from_axis_angle(Vec3::Y, 0.0);
-
-                Some(Instance { position, rotation })
-
-            }).collect::<Vec<_>>();
+                    Some(Instance { position, rotation })
+                })
+                .collect::<Vec<_>>();
 
             instances.append(&mut i);
         }
@@ -379,10 +389,14 @@ impl Gfx {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        let obj_model =
-            resources::load_model("blender_default_cube.obj", &device, &queue, &texture_bind_group_layout)
-                .await
-                .unwrap();
+        let obj_model = resources::load_model(
+            "blender_default_cube.obj",
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+        )
+        .await
+        .unwrap();
 
         let light_uniform = LightUniform::new(Vec3::splat(90.0).with_y(40.0), vec3(1.0, 1.0, 0.5));
 
@@ -534,7 +548,11 @@ impl Gfx {
         self.surface.configure(&self.device, &self.surface_config);
     }
 
-    pub(crate) fn render(&self) -> Result<(), wgpu::SurfaceError> {
+    pub(crate) fn render(
+        &self,
+        egui: &mut Option<EguiRenderer>,
+        window: Arc<Window>,
+    ) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
 
         let view = output
@@ -595,8 +613,29 @@ impl Gfx {
             &self.light.bind_group,
         );
 
+
         // drop render pass before we submit to drop the mut borrow on encoder
         drop(render_pass);
+
+        // Layer EGUI on top of frame!
+        if let Some(egui) = egui {
+            let screen_descriptor = ScreenDescriptor {
+                size_in_pixels: [self.surface_config.width, self.surface_config.height],
+                pixels_per_point: window.scale_factor() as f32 * egui.scale_factor,
+            };
+            egui.begin_frame(&window);
+
+            egui.update();
+
+            egui.end_frame_and_draw(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &window,
+                &view,
+                screen_descriptor,
+            );
+        }
 
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
