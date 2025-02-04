@@ -1,4 +1,7 @@
-use crate::gfx::{Gfx, GfxBuilder, MaybeGfx};
+use crate::{
+    gfx::{Gfx, GfxBuilder, MaybeGfx},
+    gui::EguiRenderer,
+};
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
@@ -19,6 +22,7 @@ pub struct Application {
     window_attributes: WindowAttributes,
     gfx_state: MaybeGfx,
     window: Option<Arc<Window>>,
+    egui: Option<EguiRenderer>,
 }
 
 impl Application {
@@ -27,6 +31,7 @@ impl Application {
             window_attributes: Window::default_attributes().with_title(title),
             gfx_state: MaybeGfx::Builder(GfxBuilder::new(event_loop.create_proxy())),
             window: None,
+            egui: None,
         }
     }
 }
@@ -69,6 +74,10 @@ impl ApplicationHandler<Gfx> for Application {
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, gfx: Gfx) {
+        if let Some(window) = &self.window {
+            let egui = EguiRenderer::new(&gfx.device, gfx.surface_config.format, None, 1, window);
+            self.egui = Some(egui);
+        }
         self.gfx_state = MaybeGfx::Graphics(gfx);
     }
 
@@ -86,6 +95,16 @@ impl ApplicationHandler<Gfx> for Application {
         };
 
         if let Some(ref window) = &self.window {
+            // Returns true if EGUI consumes the input.
+            if self
+                .egui
+                .as_mut()
+                .map(|egui| egui.handle_input(window, &event))
+                .is_some_and(|x| x)
+            {
+                return;
+            }
+
             gfx.input(&event, window.inner_size());
         }
 
@@ -111,8 +130,9 @@ impl ApplicationHandler<Gfx> for Application {
                 // Some horrible nesting here! Don't tell Linus...
                 if let Some(ref window) = &self.window {
                     window.request_redraw();
-                    match gfx.render() {
+                    match gfx.render(&mut self.egui, window.clone()) {
                         Ok(_) => {
+                            // TODO CITE https://github.com/kaphula/winit-egui-wgpu-template/blob/master/src/app.rs#L3
                             gfx.update();
                         }
                         Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {

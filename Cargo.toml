@@ -19,6 +19,9 @@ glam = { version = "0.29", features = ["bytemuck"] }
 tobj = { version = "4", default-features = false, features = ["async"] }
 futures = "0.3"
 itertools = "0.14"
+egui = "0.31"
+egui-wgpu = "0.31"
+egui-winit = "0.31"
 
 [build-dependencies]
 fs_extra = "1.3"
