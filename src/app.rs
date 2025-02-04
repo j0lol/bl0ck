@@ -127,6 +127,10 @@ impl ApplicationHandler<Gfx> for Application {
                         Err(wgpu::SurfaceError::Timeout) => {
                             log::warn!("Surface timeout!");
                         }
+                        Err(wgpu::SurfaceError::Other) => {
+                            log::error!("Other surface-error!");
+                            event_loop.exit();
+                        }
                     }
                 }
             }

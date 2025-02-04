@@ -93,7 +93,7 @@ impl Gfx {
         };
 
         // Handle to our GPU backends
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
 
@@ -214,7 +214,7 @@ impl Gfx {
             aspect: surface_config.width as f32 / surface_config.height as f32,
             fovy: 45.0,
             znear: 0.1,
-            zfar: 100.0,
+            zfar: 1000.0,
         };
         let camera_controller = camera::CameraController::new(0.2);
         let mut camera_uniform = camera::CameraUniform::new();
@@ -301,13 +301,13 @@ impl Gfx {
                 layout: Some(&render_pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: "vs_main",
+                    entry_point: Some("vs_main"),
                     buffers: &[model::ModelVertex::desc(), InstanceRaw::desc()],
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
-                    entry_point: "fs_main",
+                    entry_point: Some("fs_main"),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: surface_config.format,
                         blend: Some(wgpu::BlendState::REPLACE),
