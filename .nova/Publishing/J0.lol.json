@@ -7,7 +7,9 @@
     "build.rs",
     "Cargo.lock",
     "Cargo.toml",
-    "justfile"
+    "justfile",
+    "cube.blend",
+    "cube.blend1"
   ],
   "remotePath" : "\/var\/www\/vps.j0.lol\/fyptest",
   "server" : "J0.lol",

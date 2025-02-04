@@ -342,7 +342,7 @@ impl Gfx {
 
         let mut instances = vec![];
 
-        const SPACE_BETWEEN: f32 = 3.0;
+        const SPACE_BETWEEN: f32 = 2.0;
         for (coords, chunk) in map.chunks {
             let _3diter = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2);
 
@@ -359,10 +359,11 @@ impl Gfx {
 
                 // this is needed so an object at (0, 0, 0) won't get scaled to zero
                 // as Quaternions can affect scale if they're not created correctly
-                let rotation = match position.try_normalize() {
-                    Some(position) => Quat::from_axis_angle(position, 45.0),
-                    _ => Quat::from_axis_angle(Vec3::Z, 0.0),
-                };
+                // let rotation = match position.try_normalize() {
+                //     Some(position) => Quat::from_axis_angle(position, 45.0),
+                //     _ => Quat::from_axis_angle(Vec3::Z, 0.0),
+                // };
+                let rotation = Quat::from_axis_angle(Vec3::Y, 0.0);
 
                 Some(Instance { position, rotation })
 
@@ -379,11 +380,11 @@ impl Gfx {
         });
 
         let obj_model =
-            resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
+            resources::load_model("blender_default_cube.obj", &device, &queue, &texture_bind_group_layout)
                 .await
                 .unwrap();
 
-        let light_uniform = LightUniform::new(Vec3::splat(2.0), Vec3::splat(1.0));
+        let light_uniform = LightUniform::new(Vec3::splat(90.0).with_y(40.0), vec3(1.0, 1.0, 0.5));
 
         let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Light VB"),
@@ -620,7 +621,7 @@ impl Gfx {
 
         let old_position: Vec3 = self.light.uniform.position;
         self.light.uniform.position =
-            Quat::from_axis_angle(vec3(0.0, 1.0, 0.0), 0.1) * old_position;
+            Quat::from_axis_angle(vec3(0.0, 1.0, 0.0), 0.01) * old_position;
         self.queue.write_buffer(
             &self.light.buffer,
             0,

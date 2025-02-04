@@ -42,7 +42,8 @@ fn new_chunk(world_x: i32, world_z: i32) -> Chunk {
 
         let sines = f32::sin(xf * 0.1) + f32::sin(zf * 0.1);
 
-        let n = ((sines / 2. * CHUNK_SIZE.2 as f32).round() as i32) <= y as _;
+        // Pretty arbitrary numbers! Just trying to get something interesting
+        let n = (((sines / 4. + 0.5) * CHUNK_SIZE.2 as f32).round() as i32) <= y as _;
         sl3set(&mut blocks, x, y, z, {
             if n { Block::BRICK } else { Block::AIR }
         });
@@ -53,7 +54,7 @@ fn new_chunk(world_x: i32, world_z: i32) -> Chunk {
 
 pub fn new_map() -> WorldMap {
 
-    const INITIAL_GENERATION_SIZE: usize = 5;
+    const INITIAL_GENERATION_SIZE: usize = 11;
     let iter = (-(INITIAL_GENERATION_SIZE as i32/2)..).take(INITIAL_GENERATION_SIZE);
 
     let mut chunks = HashMap::new();
