@@ -1,4 +1,4 @@
-use glam::IVec2;
+use glam::{ivec2, IVec2};
 use std::collections::HashMap;
 
 // I have arbitrarily decided that this is (x,z,y) where +y is up.
@@ -31,7 +31,6 @@ pub enum Block {
     BRICK,
 }
 
-
 fn new_chunk(world_x: i32, world_z: i32) -> Chunk {
     let mut blocks = Slice3::default();
 
@@ -53,7 +52,15 @@ fn new_chunk(world_x: i32, world_z: i32) -> Chunk {
 }
 
 pub fn new_map() -> WorldMap {
-    WorldMap {
-        chunks: HashMap::from([((0, 0).into(), new_chunk(0, 0))]),
+
+    const INITIAL_GENERATION_SIZE: i32 = 5;
+    let iter = (-(INITIAL_GENERATION_SIZE/2)..).take(5);
+
+    let mut chunks = HashMap::new();
+
+    for (x, z) in itertools::iproduct!(iter.clone(), iter) {
+        chunks.insert(ivec2(x,z) ,new_chunk(x, z));
     }
+
+    WorldMap { chunks }
 }

@@ -343,7 +343,7 @@ impl Gfx {
         let mut instances = vec![];
 
         const SPACE_BETWEEN: f32 = 3.0;
-        for (_coords, chunk) in map.chunks {
+        for (coords, chunk) in map.chunks {
             let _3diter = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2);
 
             let mut i = _3diter.filter_map(|(x,y,z)| {
@@ -352,8 +352,10 @@ impl Gfx {
                     return None;
                 }
 
+                let chunk_offset = coords.as_vec2() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
+
                 let mapping = |n| SPACE_BETWEEN * (n as f32 - CHUNK_SIZE.0 as f32 / 2.0);
-                let position = vec3(mapping(x), -mapping(y), mapping(z));
+                let position = vec3(mapping(x) + chunk_offset.x, -mapping(y), mapping(z) + chunk_offset.y);
 
                 // this is needed so an object at (0, 0, 0) won't get scaled to zero
                 // as Quaternions can affect scale if they're not created correctly
