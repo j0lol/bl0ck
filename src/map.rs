@@ -53,8 +53,8 @@ fn new_chunk(world_x: i32, world_z: i32) -> Chunk {
 
 pub fn new_map() -> WorldMap {
 
-    const INITIAL_GENERATION_SIZE: i32 = 5;
-    let iter = (-(INITIAL_GENERATION_SIZE/2)..).take(5);
+    const INITIAL_GENERATION_SIZE: usize = 5;
+    let iter = (-(INITIAL_GENERATION_SIZE as i32/2)..).take(INITIAL_GENERATION_SIZE);
 
     let mut chunks = HashMap::new();
 
