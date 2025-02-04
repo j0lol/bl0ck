@@ -15,7 +15,7 @@ use winit::{
     window::Window,
 };
 
-use crate::{app::WASM_WIN_SIZE, gfx::model::Vertex, Instance, InstanceRaw};
+use crate::{app::WASM_WIN_SIZE, gfx::model::Vertex, map::{sl3get, Block, CHUNK_SIZE}, Instance, InstanceRaw};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -290,7 +290,7 @@ impl Gfx {
 
 
         let camera = camera::Camera {
-            eye: vec3(0., 1., 2.),
+            eye: vec3(50., 20., 50.),
             target: Vec3::ZERO,
             up: Vec3::Y,
             aspect: surface_config.width as f32 / surface_config.height as f32,
@@ -336,12 +336,24 @@ impl Gfx {
             bind_group: camera_bind_group,
         };
 
-        const NUM_INSTANCES_PER_ROW: u32 = 10;
+        // MAP LOAD
+
+        let map = crate::map::new_map();
+
+        let mut instances = vec![];
+
         const SPACE_BETWEEN: f32 = 3.0;
-        let instances = itertools::iproduct!(0..NUM_INSTANCES_PER_ROW, 0..NUM_INSTANCES_PER_ROW)
-            .map(|(x, z)| {
-                let mapping = |n| SPACE_BETWEEN * (n as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-                let position = vec3(mapping(x), 0.0, mapping(z));
+        for (_coords, chunk) in map.chunks {
+            let _3diter = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2);
+
+            let mut i = _3diter.filter_map(|(x,y,z)| {
+
+                if let Block::AIR = sl3get(&chunk.blocks, x, y, z) {
+                    return None;
+                }
+
+                let mapping = |n| SPACE_BETWEEN * (n as f32 - CHUNK_SIZE.0 as f32 / 2.0);
+                let position = vec3(mapping(x), -mapping(y), mapping(z));
 
                 // this is needed so an object at (0, 0, 0) won't get scaled to zero
                 // as Quaternions can affect scale if they're not created correctly
@@ -350,9 +362,12 @@ impl Gfx {
                     _ => Quat::from_axis_angle(Vec3::Z, 0.0),
                 };
 
-                Instance { position, rotation }
-            })
-            .collect::<Vec<_>>();
+                Some(Instance { position, rotation })
+
+            }).collect::<Vec<_>>();
+
+            instances.append(&mut i);
+        }
 
         let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

@@ -2,6 +2,7 @@
 
 mod app;
 mod gfx;
+mod map;
 
 use glam::{Mat3, Mat4, Quat, Vec3};
 #[cfg(target_arch = "wasm32")]
