@@ -14,6 +14,16 @@
 </head>
 
 <body id="wasm-example">
+
+    <h1>Welcome 2 my website</h1>
+
+    <p>This is a WGPU game project. It will probably take some time to download the WASM BLOB. Especially if I didn't bother to build for release. Please be patient. It will only have to cache this one <small>until I update it again...</small></p>
+
+    <p>Currently this project supports WebGL2 and WebGPU. If you are on Chromium, you should load into WebGPU. Otherwise you will get WebGL2.
+    Your browser probably has experimental support, see <a href="https://github.com/gpuweb/gpuweb/wiki/Implementation-Status">here</a>.
+    </p>
+
+    <p>At some point, I will have to drop WebGL2 support. If you are on Firefox with WebGL2, it will be horribly laggy. I will not fix this.</p>
 <script type="module">
     import init from "./pkg/bl0ck.js";
     init().then(() => {

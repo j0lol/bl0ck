@@ -1,0 +1,15 @@
+{
+  "identifier" : "B9D9C5AF-C8C8-4E07-A24B-84C2A48A7F94",
+  "ignoredFilePatterns" : [
+    "src\/",
+    "src",
+    "target",
+    "build.rs",
+    "Cargo.lock",
+    "Cargo.toml",
+    "justfile"
+  ],
+  "remotePath" : "\/var\/www\/vps.j0.lol\/fyptest",
+  "server" : "J0.lol",
+  "usesPublishing" : true
+}
