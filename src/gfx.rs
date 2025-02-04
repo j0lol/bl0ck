@@ -51,14 +51,11 @@ struct ObjectState {
     model: model::Model,
     instances: Vec<Instance>,
     instance_buffer: wgpu::Buffer,
-    diffuse_bind_group: wgpu::BindGroup,
-    diffuse_texture: texture::Texture,
 }
 
 struct LightState {
     uniform: LightUniform,
     buffer: wgpu::Buffer,
-    bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
 }
 
@@ -268,10 +265,6 @@ impl Gfx {
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &surface_config, "depth_texture");
 
-        let diffuse_bytes = include_bytes!("../res/happy-tree.png");
-        let diffuse_texture =
-            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "happy_tree.png").unwrap();
-
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -295,20 +288,6 @@ impl Gfx {
                 label: Some("texture_bind_group_layout"),
             });
 
-        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                },
-            ],
-            label: Some("diffuse_bind_group"),
-        });
 
         let camera = camera::Camera {
             eye: vec3(0., 1., 2.),
@@ -516,14 +495,11 @@ impl Gfx {
                 model: obj_model,
                 instances,
                 instance_buffer,
-                diffuse_bind_group,
-                diffuse_texture,
             },
             light: LightState {
                 uniform: light_uniform,
                 buffer: light_buffer,
                 bind_group: light_bind_group,
-                bind_group_layout: light_bind_group_layout,
             },
         }
     }
