@@ -33,7 +33,6 @@ impl Application {
 
 impl ApplicationHandler<Gfx> for Application {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        log::info!("hi web!");
         event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
         let window = Arc::new(
             event_loop

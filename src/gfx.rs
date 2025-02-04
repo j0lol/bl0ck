@@ -595,8 +595,6 @@ impl Gfx {
             &self.light.bind_group,
         );
 
-        log::debug!("render");
-
         // drop render pass before we submit to drop the mut borrow on encoder
         drop(render_pass);
 
