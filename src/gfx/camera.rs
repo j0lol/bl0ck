@@ -1,4 +1,4 @@
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Vec4};
 use winit::{
     event::{ElementState, KeyEvent, WindowEvent},
     keyboard::KeyCode,
@@ -27,17 +27,20 @@ impl Camera {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
+    view_position: Vec4,
     view_proj: Mat4,
 }
 
 impl CameraUniform {
     pub fn new() -> Self {
         Self {
+            view_position: Vec4::splat(0.0),
             view_proj: Mat4::IDENTITY,
         }
     }
 
     pub fn update_view_proj(&mut self, camera: &Camera) {
+        self.view_position = camera.eye.extend(1.0);
         self.view_proj = camera.build_view_projection_matrix();
     }
 }

@@ -3,13 +3,11 @@
 mod app;
 mod gfx;
 
-use wasm_bindgen::UnwrapThrowExt;
-use winit::{
-    event_loop::EventLoop,
-};
+use glam::{Mat3, Mat4, Quat, Vec3};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-use glam::{Quat, Vec3};
+use wasm_bindgen::UnwrapThrowExt;
+use winit::event_loop::EventLoop;
 
 struct Instance {
     position: Vec3,
@@ -22,6 +20,7 @@ impl Instance {
             model: (glam::Mat4::from_translation(self.position)
                 * glam::Mat4::from_quat(self.rotation))
             .to_cols_array_2d(),
+            normal: Mat3::from_quat(self.rotation).to_cols_array_2d(),
         }
     }
 }
@@ -29,6 +28,7 @@ impl Instance {
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct InstanceRaw {
     model: [[f32; 4]; 4],
+    normal: [[f32; 3]; 3],
 }
 
 impl InstanceRaw {
@@ -59,12 +59,25 @@ impl InstanceRaw {
                     shader_location: 8,
                     format: wgpu::VertexFormat::Float32x4,
                 },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
+                    shader_location: 9,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 19]>() as wgpu::BufferAddress,
+                    shader_location: 10,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 22]>() as wgpu::BufferAddress,
+                    shader_location: 11,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
             ],
         }
     }
 }
-
-const NUM_INSTANCES_PER_ROW: u32 = 100;
 
 fn init_logger() {
     cfg_if::cfg_if! {

@@ -13,6 +13,7 @@ pub(crate) const WASM_WIN_SIZE: (u32, u32) = (640, 480);
 // TODO citation:
 // https://github.com/Bentebent/rita/ for winit 29.0->30.0 migration
 // https://github.com/erer1243/wgpu-0.20-winit-0.30-web-example/blob/master/src/lib.rs For better winit 30.0 impl
+// thanks everyone. the migration is really counter-intuitive
 
 pub struct Application {
     window_attributes: WindowAttributes,

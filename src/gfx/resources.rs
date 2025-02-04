@@ -16,7 +16,12 @@ fn format_url(file_name: &str) -> reqwest::Url {
     // let base = reqwest::Url::parse(&format!("{}/", origin)).unwrap();
     // base.join(file_name).unwrap()
 
-    reqwest::Url::parse(&format!("{}/../res/{}",location.href().unwrap(), file_name)).unwrap()
+    reqwest::Url::parse(&format!(
+        "{}/../res/{}",
+        location.href().unwrap(),
+        file_name
+    ))
+    .unwrap()
 }
 
 pub async fn load_string(file_name: &str) -> Result<String, Box<dyn Error>> {
