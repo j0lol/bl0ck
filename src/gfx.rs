@@ -529,9 +529,11 @@ impl Gfx {
 
         self.surface_config.width = new_size.width;
         self.surface_config.height = new_size.height;
-        // self.depth_texture =
-        // texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
+        self.camera.positioning.aspect = self.surface_config.width as f32 / self.surface_config.height as f32;
         self.surface.configure(&self.device, &self.surface_config);
+
+        self.depth_texture =
+         texture::Texture::create_depth_texture(&self.device, &self.surface_config, "depth_texture");
     }
 
     pub(crate) fn render(&self) -> Result<(), wgpu::SurfaceError> {
