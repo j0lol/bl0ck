@@ -2,7 +2,7 @@ use egui_winit::EventResponse;
 use glam::{ivec2, ivec3, IVec2};
 use winit::window::Window;
 
-use crate::{gfx::Gfx, map::{chunk_scramble_dispatch, ChunkScramble}};
+use crate::{gfx::Gfx, world::map::{chunk_scramble_dispatch, ChunkScramble}, world::World};
 
 pub struct EguiRenderer {
     state: egui_winit::State,
@@ -135,7 +135,7 @@ impl EguiRenderer {
         self.frame_started = false;
     }
 
-    pub fn update(&mut self, gfx: &mut Gfx) {
+    pub fn update(&mut self, gfx: &mut Gfx, world: &mut World) {
         let ctx = self.ctx();
 
         let mut scale_factor = self.scale_factor;
@@ -172,7 +172,7 @@ impl EguiRenderer {
 
                 ui.separator();
 
-                ui.label(&format!("The camera is pointing at {:?}", gfx.camera.positioning.target));
+                ui.label(format!("The camera is pointing at {:?}", gfx.camera.positioning.target));
                 ui.add(egui::Slider::new(&mut gfx.camera.positioning.eye.x, -500.0..=500.0).text("Cam X"));
                 ui.add(egui::Slider::new(&mut gfx.camera.positioning.eye.y, -500.0..=500.0).text("Cam Y"));
                 ui.add(egui::Slider::new(&mut gfx.camera.positioning.eye.z, -500.0..=500.0).text("Cam Z"));
@@ -204,20 +204,36 @@ impl EguiRenderer {
 
                     if ui.button("Random").clicked() {
                         let c = chunk_scramble_dispatch(ChunkScramble::Random)(pos);
-                        gfx.map.chunks.insert(pos, c);
+                        world.map.chunks.insert(pos.into(), c);
                         gfx.object.remake = true;
                     }
                     if ui.button("Normal").clicked() {
                         let c = chunk_scramble_dispatch(ChunkScramble::Normal)(pos);
-                        gfx.map.chunks.insert(pos, c);
+                        world.map.chunks.insert(pos.into(), c);
                         gfx.object.remake = true;
                     }
                     if ui.button("Inverse").clicked() {
                         let c = chunk_scramble_dispatch(ChunkScramble::Inverse)(pos);
-                        gfx.map.chunks.insert(pos, c);
+                        world.map.chunks.insert(pos.into(), c);
                         gfx.object.remake = true;
                     }
                 });
+
+                ui.separator();
+
+
+                ui.horizontal(|ui| {
+
+                    if ui.button("Save").clicked() {
+                        world.save().unwrap();
+                    }
+                    if ui.button("Load").clicked() {
+                        *world = World::load().unwrap();
+                        gfx.object.remake = true;
+                    }
+
+                });
+
 
             });
 

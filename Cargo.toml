@@ -23,6 +23,7 @@ egui = "0.31"
 egui-wgpu = "0.31"
 egui-winit = { version = "0.31", default-features = false }
 rand = "0.9.0"
+bincode = "2.0.0-RC.3"
 
 [build-dependencies]
 fs_extra = "1.3"

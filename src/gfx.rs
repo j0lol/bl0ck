@@ -6,7 +6,7 @@ mod texture;
 use std::sync::Arc;
 
 use egui_wgpu::ScreenDescriptor;
-use glam::{vec3, Quat, Vec3};
+use glam::{vec3, IVec3, Quat, Vec3};
 use wgpu::util::DeviceExt;
 use winit::{
     dpi::PhysicalSize,
@@ -17,16 +17,12 @@ use winit::{
 };
 
 use crate::{
-    app::WASM_WIN_SIZE,
-    gfx::model::Vertex,
-    gui::EguiRenderer,
-    map::{sl3get, Block, WorldMap, CHUNK_SIZE},
-    Instance, InstanceRaw,
+    app::WASM_WIN_SIZE, gfx::model::Vertex, gui::EguiRenderer, world::map::{sl3get, Block, WorldMap, CHUNK_SIZE}, world::World, Instance, InstanceRaw
 };
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct LightUniform {
+pub(crate) struct LightUniform {
     position: Vec3,
     _pad: u32,
     color: Vec3,
@@ -183,7 +179,6 @@ pub struct Gfx {
     pub render_pipelines: RenderPipelines,
     pub depth_texture: texture::Texture,
 
-    pub map: WorldMap,
     pub object: ObjectState,
     pub camera: CameraState,
     pub interact: InteractState,
@@ -346,7 +341,7 @@ impl Gfx {
 
         // MAP LOAD
 
-        let map = crate::map::new_map();
+        let map = crate::world::map::new_map();
 
         let instances = Self::remake_instance_buf(&map);
 
@@ -476,7 +471,6 @@ impl Gfx {
             queue,
             surface_config,
             depth_texture,
-            map,
             camera: camera_state,
             interact: InteractState {
                 wireframe: false,
@@ -537,7 +531,7 @@ impl Gfx {
                         return None;
                     }
 
-                    let chunk_offset = coords.as_vec3() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
+                    let chunk_offset = IVec3::from(*coords).as_vec3() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
 
                     let mapping = |n| SPACE_BETWEEN * (n as f32 - CHUNK_SIZE.0 as f32 / 2.0);
                     let position = vec3(
@@ -557,8 +551,8 @@ impl Gfx {
         instances
     }
 
-    pub fn update_instance_buf(&mut self) {
-        let instances = Self::remake_instance_buf(&self.map);
+    pub fn update_instance_buf(&mut self, map: &WorldMap) {
+        let instances = Self::remake_instance_buf(&map);
 
         let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
         let instance_buffer = self
@@ -577,6 +571,7 @@ impl Gfx {
         &mut self,
         egui: &mut Option<EguiRenderer>,
         window: Arc<Window>,
+        world: &mut World,
     ) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
 
@@ -655,7 +650,7 @@ impl Gfx {
             };
             egui.begin_frame(&window);
 
-            egui.update(self);
+            egui.update(self, world);
 
             egui.end_frame_and_draw(
                 &self.device,
@@ -673,7 +668,7 @@ impl Gfx {
         Ok(())
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, world: &mut World) {
         self.camera
             .controller
             .update_camera(&mut self.camera.positioning);
@@ -695,7 +690,7 @@ impl Gfx {
             bytemuck::cast_slice(&[self.light.uniform]),
         );
         if self.object.remake {
-            self.update_instance_buf();
+            self.update_instance_buf(&world.map);
         }
     }
 

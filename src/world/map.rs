@@ -1,3 +1,4 @@
+use bincode::{Decode, Encode};
 use glam::{ivec2, ivec3, IVec2, IVec3};
 use itertools::Itertools;
 use rand::{distr::{Distribution, StandardUniform}, Rng};
@@ -17,15 +18,17 @@ pub fn sl3set(sl3: &mut Slice3, x: usize, y: usize, z: usize, new: Block) {
     sl3[y + CHUNK_SIZE.2 * (z + CHUNK_SIZE.1 * x)] = new;
 }
 
+#[derive(Encode, Decode)]
 pub struct WorldMap {
-    pub chunks: HashMap<IVec3, Chunk>,
+    pub chunks: HashMap<(i32, i32, i32), Chunk>,
 }
 
+#[derive(Encode, Decode)]
 pub struct Chunk {
     pub blocks: Slice3,
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, Encode, Decode)]
 #[repr(u32)]
 pub enum Block {
     #[default]
@@ -80,8 +83,8 @@ pub fn new_map() -> WorldMap {
 
     for (x, z) in itertools::iproduct!(iter.clone(), iter) {
         let p = ivec3(x,0,z);
-        chunks.insert(p, new_chunk(p));
-        chunks.insert(p.with_y(1), new_chunk(p.with_y(1)));
+        chunks.insert(p.into(), new_chunk(p));
+        chunks.insert(p.with_y(1).into(), new_chunk(p.with_y(1)));
 
     }
 

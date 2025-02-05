@@ -1,6 +1,5 @@
 use crate::{
-    gfx::{Gfx, GfxBuilder, MaybeGfx},
-    gui::EguiRenderer,
+    gfx::{Gfx, GfxBuilder, MaybeGfx}, gui::EguiRenderer, world::map::{new_map, WorldMap}, world::World
 };
 use std::sync::Arc;
 use winit::{
@@ -23,6 +22,7 @@ pub struct Application {
     gfx_state: MaybeGfx,
     window: Option<Arc<Window>>,
     egui: Option<EguiRenderer>,
+    world: World,
 }
 
 impl Application {
@@ -32,6 +32,7 @@ impl Application {
             gfx_state: MaybeGfx::Builder(GfxBuilder::new(event_loop.create_proxy())),
             window: None,
             egui: None,
+            world: World { map: new_map() }
         }
     }
 }
@@ -130,10 +131,10 @@ impl ApplicationHandler<Gfx> for Application {
                 // Some horrible nesting here! Don't tell Linus...
                 if let Some(ref window) = &self.window {
                     window.request_redraw();
-                    match gfx.render(&mut self.egui, window.clone()) {
+                    match gfx.render(&mut self.egui, window.clone(), &mut self.world) {
                         Ok(_) => {
                             // TODO CITE https://github.com/kaphula/winit-egui-wgpu-template/blob/master/src/app.rs#L3
-                            gfx.update();
+                            gfx.update(&mut self.world);
                         }
                         Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                             gfx.resize(window.inner_size());
