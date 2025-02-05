@@ -20,7 +20,7 @@ use crate::{
     app::WASM_WIN_SIZE,
     gfx::model::Vertex,
     gui::EguiRenderer,
-    map::{sl3get, Block, CHUNK_SIZE},
+    map::{sl3get, Block, WorldMap, CHUNK_SIZE},
     Instance, InstanceRaw,
 };
 
@@ -58,6 +58,7 @@ pub struct ObjectState {
     pub model: model::Model,
     pub instances: Vec<Instance>,
     pub instance_buffer: wgpu::Buffer,
+    pub remake: bool,
 }
 
 pub struct LightState {
@@ -182,6 +183,7 @@ pub struct Gfx {
     pub render_pipelines: RenderPipelines,
     pub depth_texture: texture::Texture,
 
+    pub map: WorldMap,
     pub object: ObjectState,
     pub camera: CameraState,
     pub interact: InteractState,
@@ -349,7 +351,7 @@ impl Gfx {
         let mut instances = vec![];
 
         const SPACE_BETWEEN: f32 = 2.0;
-        for (coords, chunk) in map.chunks {
+        for (coords, chunk) in &map.chunks {
             let _3diter = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2);
 
             let mut i = _3diter
@@ -508,6 +510,7 @@ impl Gfx {
             queue,
             surface_config,
             depth_texture,
+            map,
             camera: camera_state,
             interact: InteractState {
                 wireframe: false,
@@ -527,6 +530,7 @@ impl Gfx {
                 model: obj_model,
                 instances,
                 instance_buffer,
+                remake: false,
             },
             light: LightState {
                 uniform: light_uniform,
@@ -552,6 +556,50 @@ impl Gfx {
             &self.surface_config,
             "depth_texture",
         );
+    }
+
+    pub fn update_instance_buf(&mut self) {
+        let mut instances = vec![];
+
+        const SPACE_BETWEEN: f32 = 2.0;
+        for (coords, chunk) in &self.map.chunks {
+            let _3diter = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2);
+
+            let mut i = _3diter
+                .filter_map(|(x, y, z)| {
+                    if let Block::Air = sl3get(&chunk.blocks, x, y, z) {
+                        return None;
+                    }
+
+                    let chunk_offset = coords.as_vec2() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
+
+                    let mapping = |n| SPACE_BETWEEN * (n as f32 - CHUNK_SIZE.0 as f32 / 2.0);
+                    let position = vec3(
+                        mapping(x) + chunk_offset.x,
+                        -mapping(y),
+                        mapping(z) + chunk_offset.y,
+                    );
+
+                    let rotation = Quat::from_axis_angle(Vec3::Y, 0.0);
+
+                    Some(Instance { position, rotation })
+                })
+                .collect::<Vec<_>>();
+
+            instances.append(&mut i);
+        }
+
+        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+        let instance_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Instance Buffer"),
+                contents: bytemuck::cast_slice(&instance_data),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+        self.object.instances = instances;
+        self.object.instance_buffer = instance_buffer;
+        self.object.remake = false;
     }
 
     pub(crate) fn render(
@@ -675,11 +723,13 @@ impl Gfx {
             0,
             bytemuck::cast_slice(&[self.light.uniform]),
         );
+        if self.object.remake {
+            self.update_instance_buf();
+        }
     }
 
     pub fn input(&mut self, event: &WindowEvent, window_size: PhysicalSize<u32>) -> bool {
         self.camera.controller.process_events(event);
-
 
         // Deprecated! Replaced with EGUI debug ui.
         // match event {

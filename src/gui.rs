@@ -1,13 +1,15 @@
 use egui_winit::EventResponse;
+use glam::{ivec2, IVec2};
 use winit::window::Window;
 
-use crate::gfx::Gfx;
+use crate::{gfx::Gfx, map::{chunk_scramble_dispatch, ChunkScramble}};
 
 pub struct EguiRenderer {
     state: egui_winit::State,
     renderer: egui_wgpu::Renderer,
     frame_started: bool,
     pub scale_factor: f32,
+    pub chunk_influence: (i32, i32),
 }
 
 impl EguiRenderer {
@@ -51,7 +53,8 @@ impl EguiRenderer {
             state,
             renderer,
             frame_started: false,
-            scale_factor: 1.0
+            scale_factor: 1.0,
+            chunk_influence: (0,0)
         }
     }
 
@@ -136,6 +139,7 @@ impl EguiRenderer {
         let ctx = self.ctx();
 
         let mut scale_factor = self.scale_factor;
+        let (mut chunk_x, mut chunk_z) = self.chunk_influence;
 
         egui::Window::new("Debug Menu")
             .resizable(true)
@@ -183,8 +187,39 @@ impl EguiRenderer {
                         scale_factor = (scale_factor + 0.1).min(3.0);
                     }
                 });
+
+                ui.separator();
+
+                ui.horizontal(|ui| {
+                    ui.label("Scramble chunk at...");
+                    ui.add(egui::DragValue::new(&mut chunk_x).speed(0.1));
+                    ui.label("x, ");
+
+                    ui.add(egui::DragValue::new(&mut chunk_z).speed(0.1));
+                    ui.label("z. ");
+                });
+
+                ui.horizontal(|ui| {
+                    if ui.button("Random").clicked() {
+                        let c = chunk_scramble_dispatch(ChunkScramble::Random)(chunk_x,chunk_z);
+                        gfx.map.chunks.insert(ivec2(chunk_x,chunk_z), c);
+                        gfx.object.remake = true;
+                    }
+                    if ui.button("Normal").clicked() {
+                        let c = chunk_scramble_dispatch(ChunkScramble::Normal)(chunk_x,chunk_z);
+                        gfx.map.chunks.insert(ivec2(chunk_x,chunk_z), c);
+                        gfx.object.remake = true;
+                    }
+                    if ui.button("Inverse").clicked() {
+                        let c = chunk_scramble_dispatch(ChunkScramble::Inverse)(chunk_x,chunk_z);
+                        gfx.map.chunks.insert(ivec2(chunk_x,chunk_z), c);
+                        gfx.object.remake = true;
+                    }
+                });
+
             });
 
         self.scale_factor = scale_factor;
+        self.chunk_influence = (chunk_x, chunk_z);
     }
 }
