@@ -11,7 +11,7 @@ use winit::{
     window::{Window, WindowAttributes, WindowId},
 };
 
-pub(crate) const WASM_WIN_SIZE: (u32, u32) = (640, 480);
+pub(crate) const WASM_WIN_SIZE: (u32, u32) = (640*2, 480*2);
 
 // TODO citation:
 // https://github.com/Bentebent/rita/ for winit 29.0->30.0 migration

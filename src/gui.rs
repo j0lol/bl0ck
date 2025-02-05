@@ -39,6 +39,12 @@ impl EguiRenderer {
             true,
         );
 
+        #[cfg(target_arch = "wasm32")]
+        {
+            state.egui_ctx().set_pixels_per_point(1.0);
+            state.egui_ctx().set_zoom_factor(1.0);
+        }
+
         EguiRenderer {
             state,
             renderer,
@@ -71,6 +77,7 @@ impl EguiRenderer {
             panic!("begin_frame must be called before end_frame_and_draw can be called!");
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
         self.ctx().set_pixels_per_point(screen_descriptor.pixels_per_point);
 
         let full_output = self.ctx().end_pass();
@@ -78,9 +85,15 @@ impl EguiRenderer {
         self.state
             .handle_platform_output(window, full_output.platform_output);
 
+        #[cfg(not(target_arch = "wasm32"))]
         let tris = self
             .ctx()
             .tessellate(full_output.shapes, self.ctx().pixels_per_point());
+
+        #[cfg(target_arch = "wasm32")]
+        let tris = self
+            .ctx()
+            .tessellate(full_output.shapes, 1.0);
 
         for (id, image_delta) in &full_output.textures_delta.set {
             self.renderer

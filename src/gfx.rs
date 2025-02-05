@@ -620,10 +620,16 @@ impl Gfx {
         drop(render_pass);
 
         // Layer EGUI on top of frame!
+
         if let Some(egui) = egui {
+            let pixels_per_point = if cfg!(target_arch = "wasm32") {
+                1.0
+            } else {
+                window.scale_factor() as f32 * egui.scale_factor
+            };
             let screen_descriptor = ScreenDescriptor {
                 size_in_pixels: [self.surface_config.width, self.surface_config.height],
-                pixels_per_point: window.scale_factor() as f32 * egui.scale_factor,
+                pixels_per_point,
             };
             egui.begin_frame(&window);
 
