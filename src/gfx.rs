@@ -348,41 +348,7 @@ impl Gfx {
 
         let map = crate::map::new_map();
 
-        let mut instances = vec![];
-
-        const SPACE_BETWEEN: f32 = 2.0;
-        for (coords, chunk) in &map.chunks {
-            let _3diter = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2);
-
-            let mut i = _3diter
-                .filter_map(|(x, y, z)| {
-                    if let Block::Air = sl3get(&chunk.blocks, x, y, z) {
-                        return None;
-                    }
-
-                    let chunk_offset = coords.as_vec2() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
-
-                    let mapping = |n| SPACE_BETWEEN * (n as f32 - CHUNK_SIZE.0 as f32 / 2.0);
-                    let position = vec3(
-                        mapping(x) + chunk_offset.x,
-                        -mapping(y),
-                        mapping(z) + chunk_offset.y,
-                    );
-
-                    // this is needed so an object at (0, 0, 0) won't get scaled to zero
-                    // as Quaternions can affect scale if they're not created correctly
-                    // let rotation = match position.try_normalize() {
-                    //     Some(position) => Quat::from_axis_angle(position, 45.0),
-                    //     _ => Quat::from_axis_angle(Vec3::Z, 0.0),
-                    // };
-                    let rotation = Quat::from_axis_angle(Vec3::Y, 0.0);
-
-                    Some(Instance { position, rotation })
-                })
-                .collect::<Vec<_>>();
-
-            instances.append(&mut i);
-        }
+        let instances = Self::remake_instance_buf(&map);
 
         let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -558,11 +524,11 @@ impl Gfx {
         );
     }
 
-    pub fn update_instance_buf(&mut self) {
+    fn remake_instance_buf(map: &WorldMap) -> Vec<Instance> {
         let mut instances = vec![];
 
         const SPACE_BETWEEN: f32 = 2.0;
-        for (coords, chunk) in &self.map.chunks {
+        for (coords, chunk) in &map.chunks {
             let _3diter = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2);
 
             let mut i = _3diter
@@ -571,13 +537,13 @@ impl Gfx {
                         return None;
                     }
 
-                    let chunk_offset = coords.as_vec2() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
+                    let chunk_offset = coords.as_vec3() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
 
                     let mapping = |n| SPACE_BETWEEN * (n as f32 - CHUNK_SIZE.0 as f32 / 2.0);
                     let position = vec3(
                         mapping(x) + chunk_offset.x,
-                        -mapping(y),
-                        mapping(z) + chunk_offset.y,
+                        -(mapping(y) + chunk_offset.y),
+                        mapping(z) + chunk_offset.z,
                     );
 
                     let rotation = Quat::from_axis_angle(Vec3::Y, 0.0);
@@ -588,6 +554,11 @@ impl Gfx {
 
             instances.append(&mut i);
         }
+        instances
+    }
+
+    pub fn update_instance_buf(&mut self) {
+        let instances = Self::remake_instance_buf(&self.map);
 
         let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
         let instance_buffer = self

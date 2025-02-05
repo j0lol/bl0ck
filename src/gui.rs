@@ -1,5 +1,5 @@
 use egui_winit::EventResponse;
-use glam::{ivec2, IVec2};
+use glam::{ivec2, ivec3, IVec2};
 use winit::window::Window;
 
 use crate::{gfx::Gfx, map::{chunk_scramble_dispatch, ChunkScramble}};
@@ -200,19 +200,21 @@ impl EguiRenderer {
                 });
 
                 ui.horizontal(|ui| {
+                    let pos = ivec3(chunk_x,0,chunk_z);
+
                     if ui.button("Random").clicked() {
-                        let c = chunk_scramble_dispatch(ChunkScramble::Random)(chunk_x,chunk_z);
-                        gfx.map.chunks.insert(ivec2(chunk_x,chunk_z), c);
+                        let c = chunk_scramble_dispatch(ChunkScramble::Random)(pos);
+                        gfx.map.chunks.insert(pos, c);
                         gfx.object.remake = true;
                     }
                     if ui.button("Normal").clicked() {
-                        let c = chunk_scramble_dispatch(ChunkScramble::Normal)(chunk_x,chunk_z);
-                        gfx.map.chunks.insert(ivec2(chunk_x,chunk_z), c);
+                        let c = chunk_scramble_dispatch(ChunkScramble::Normal)(pos);
+                        gfx.map.chunks.insert(pos, c);
                         gfx.object.remake = true;
                     }
                     if ui.button("Inverse").clicked() {
-                        let c = chunk_scramble_dispatch(ChunkScramble::Inverse)(chunk_x,chunk_z);
-                        gfx.map.chunks.insert(ivec2(chunk_x,chunk_z), c);
+                        let c = chunk_scramble_dispatch(ChunkScramble::Inverse)(pos);
+                        gfx.map.chunks.insert(pos, c);
                         gfx.object.remake = true;
                     }
                 });
