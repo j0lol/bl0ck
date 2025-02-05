@@ -46,7 +46,7 @@ impl CameraUniform {
 }
 
 pub struct CameraController {
-    speed: f32,
+    pub speed: f32,
     buttons: glam::BVec4, // fwd, lft, bwd, rht
 }
 

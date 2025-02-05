@@ -1,6 +1,8 @@
 use egui_winit::EventResponse;
 use winit::window::Window;
 
+use crate::gfx::Gfx;
+
 pub struct EguiRenderer {
     state: egui_winit::State,
     renderer: egui_wgpu::Renderer,
@@ -130,21 +132,46 @@ impl EguiRenderer {
         self.frame_started = false;
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, gfx: &mut Gfx) {
         let ctx = self.ctx();
 
         let mut scale_factor = self.scale_factor;
 
-        egui::Window::new("winit + egui + wgpu says hello!")
+        egui::Window::new("Debug Menu")
             .resizable(true)
             .vscroll(true)
             .default_open(false)
             .show(ctx, |ui| {
-                ui.label("Label!");
+                ui.horizontal(|ui| {
+                    ui.label("Draw Color");
 
-                if ui.button("Button!").clicked() {
-                    println!("boom!")
-                }
+                    // Absolutely disgusting code!
+                    // I would need a func to convert between wgpu::Color (f64 rgb)
+                    // to f32 rgb and back. idk
+                    //
+                    // Better yet, a generic color type that can convert to wgpu
+                    // and others
+                    let c = gfx.interact.clear_color;
+                    let mut color = [c.r as _, c.g as _, c.b as _];
+
+                    ui.color_edit_button_rgb(&mut color);
+                    gfx.interact.clear_color.r = color[0] as _;
+                    gfx.interact.clear_color.g = color[1] as _;
+                    gfx.interact.clear_color.b = color[2] as _;
+                });
+
+                ui.checkbox(&mut gfx.interact.wireframe, "Wireframe (PC Only)");
+
+                ui.separator();
+
+                ui.add(egui::Slider::new(&mut gfx.camera.controller.speed, 0.1..=10.0).text("Cam Speed"));
+
+                ui.separator();
+
+                ui.label(&format!("The camera is pointing at {:?}", gfx.camera.positioning.target));
+                ui.add(egui::Slider::new(&mut gfx.camera.positioning.eye.x, -500.0..=500.0).text("Cam X"));
+                ui.add(egui::Slider::new(&mut gfx.camera.positioning.eye.y, -500.0..=500.0).text("Cam Y"));
+                ui.add(egui::Slider::new(&mut gfx.camera.positioning.eye.z, -500.0..=500.0).text("Cam Z"));
 
                 ui.separator();
                 ui.horizontal(|ui| {

@@ -43,27 +43,27 @@ impl LightUniform {
     }
 }
 
-struct CameraState {
-    positioning: camera::Camera,
-    controller: camera::CameraController,
-    uniform: camera::CameraUniform,
-    buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
+pub struct CameraState {
+    pub positioning: camera::Camera,
+    pub controller: camera::CameraController,
+    pub uniform: camera::CameraUniform,
+    pub buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
 }
-struct InteractState {
-    clear_color: wgpu::Color,
-    wireframe: bool,
+pub struct InteractState {
+    pub clear_color: wgpu::Color,
+    pub wireframe: bool,
 }
-struct ObjectState {
-    model: model::Model,
-    instances: Vec<Instance>,
-    instance_buffer: wgpu::Buffer,
+pub struct ObjectState {
+    pub model: model::Model,
+    pub instances: Vec<Instance>,
+    pub instance_buffer: wgpu::Buffer,
 }
 
-struct LightState {
-    uniform: LightUniform,
-    buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
+pub struct LightState {
+    pub uniform: LightUniform,
+    pub buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
 }
 
 pub struct RenderPipelines {
@@ -182,10 +182,10 @@ pub struct Gfx {
     pub render_pipelines: RenderPipelines,
     pub depth_texture: texture::Texture,
 
-    object: ObjectState,
-    camera: CameraState,
-    interact: InteractState,
-    light: LightState,
+    pub object: ObjectState,
+    pub camera: CameraState,
+    pub interact: InteractState,
+    pub light: LightState,
 }
 impl Gfx {
     pub async fn new(window: std::sync::Arc<winit::window::Window>) -> Self {
@@ -543,15 +543,19 @@ impl Gfx {
 
         self.surface_config.width = new_size.width;
         self.surface_config.height = new_size.height;
-        self.camera.positioning.aspect = self.surface_config.width as f32 / self.surface_config.height as f32;
+        self.camera.positioning.aspect =
+            self.surface_config.width as f32 / self.surface_config.height as f32;
         self.surface.configure(&self.device, &self.surface_config);
 
-        self.depth_texture =
-         texture::Texture::create_depth_texture(&self.device, &self.surface_config, "depth_texture");
+        self.depth_texture = texture::Texture::create_depth_texture(
+            &self.device,
+            &self.surface_config,
+            "depth_texture",
+        );
     }
 
     pub(crate) fn render(
-        &self,
+        &mut self,
         egui: &mut Option<EguiRenderer>,
         window: Arc<Window>,
     ) -> Result<(), wgpu::SurfaceError> {
@@ -615,7 +619,6 @@ impl Gfx {
             &self.light.bind_group,
         );
 
-
         // drop render pass before we submit to drop the mut borrow on encoder
         drop(render_pass);
 
@@ -633,7 +636,7 @@ impl Gfx {
             };
             egui.begin_frame(&window);
 
-            egui.update();
+            egui.update(self);
 
             egui.end_frame_and_draw(
                 &self.device,
@@ -677,36 +680,30 @@ impl Gfx {
     pub fn input(&mut self, event: &WindowEvent, window_size: PhysicalSize<u32>) -> bool {
         self.camera.controller.process_events(event);
 
-        match event {
-            WindowEvent::CursorMoved {
-                device_id: _,
-                position,
-            } => {
-                self.interact.clear_color = wgpu::Color {
-                    r: position.x / (window_size.width as f64),
-                    g: 0.2,
-                    b: position.y / (window_size.height as f64),
-                    a: 0.1,
-                };
-                return true;
-            }
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        state,
-                        physical_key: PhysicalKey::Code(keycode),
-                        ..
-                    },
-                ..
-            } => {
-                let is_pressed = *state == ElementState::Pressed;
-                if *keycode == KeyCode::KeyL && is_pressed {
-                    self.interact.wireframe = !self.interact.wireframe;
-                    return true;
-                }
-            }
-            _ => {}
-        }
+
+        // Deprecated! Replaced with EGUI debug ui.
+        // match event {
+        //     WindowEvent::CursorMoved {
+        //         device_id: _,
+        //         position,
+        //     } => {}
+        //     WindowEvent::KeyboardInput {
+        //         event:
+        //             KeyEvent {
+        //                 state,
+        //                 physical_key: PhysicalKey::Code(keycode),
+        //                 ..
+        //             },
+        //         ..
+        //     } => {
+        //         let is_pressed = *state == ElementState::Pressed;
+        //         if *keycode == KeyCode::KeyL && is_pressed {
+        //             self.interact.wireframe = !self.interact.wireframe;
+        //             return true;
+        //         }
+        //     }
+        //     _ => {}
+        // }
 
         false
     }
