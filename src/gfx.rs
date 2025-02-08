@@ -41,6 +41,7 @@ pub struct CameraState {
 pub struct InteractState {
     pub clear_color: wgpu::Color,
     pub wireframe: bool,
+    pub shadows: bool,
 }
 pub struct ObjectState {
     pub model: model::Model,
@@ -292,7 +293,7 @@ impl Gfx {
         surface.configure(&device, &surface_config);
 
         let depth_texture =
-            texture::Texture::create_depth_texture(&device, &surface_config, "depth_texture");
+            texture::Texture::create_depth_texture(&device, &surface_config, None, "depth_texture");
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -368,7 +369,7 @@ impl Gfx {
 
         log::info!("Light setup!");
         let light = camera::Camera {
-            eye: vec3(90., 40., 90.),
+            eye: vec3(0., 300., 0.),
             target: Vec3::ZERO,
             up: Vec3::Y,
             aspect: surface_config.width as f32 / surface_config.height as f32,
@@ -396,8 +397,12 @@ impl Gfx {
 
         log::info!("asdfasdgf");
 
-        let shadow_map =
-            texture::Texture::create_depth_texture(&device, &surface_config, "Shadow Map");
+        let shadow_map = texture::Texture::create_depth_texture(
+            &device,
+            &surface_config,
+            Some((1000, 1000)),
+            "Shadow Map",
+        );
         // let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
         //     size: wgpu::Extent3d {
         //         width: 1024,
@@ -581,7 +586,7 @@ impl Gfx {
                     topology: wgpu::PrimitiveTopology::TriangleList,
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(wgpu::Face::Back),
+                    cull_mode: Some(wgpu::Face::Front),
                     // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
                     polygon_mode: wgpu::PolygonMode::Fill,
                     // Requires Features::DEPTH_CLIP_CONTROL
@@ -730,6 +735,7 @@ impl Gfx {
                     b: 0.3,
                     a: 1.0,
                 },
+                shadows: true,
             },
             object: ObjectState {
                 model: obj_model,
@@ -759,6 +765,7 @@ impl Gfx {
         self.depth_texture = texture::Texture::create_depth_texture(
             &self.device,
             &self.surface_config,
+            None,
             "depth_texture",
         );
     }
@@ -837,7 +844,7 @@ impl Gfx {
         use crate::gfx::model::DrawModel;
 
         // Shadow-map Pass
-        {
+        if self.interact.shadows {
             let Pass {
                 pipeline,
                 bind_group,
@@ -920,7 +927,7 @@ impl Gfx {
 
             render_pass.set_vertex_buffer(1, self.object.instance_buffer.slice(..));
 
-            // use crate::gfx::model::DrawLight;
+            use crate::gfx::model::DrawLight;
             // render_pass.set_pipeline(pipeline.two().1);
             // render_pass.draw_light_model(
             //     &self.object.model,
@@ -943,6 +950,10 @@ impl Gfx {
                     .flatten()
                     .unwrap_or(&self.render_pipelines.camera),
             );*/
+
+            render_pass.set_pipeline(pipeline.two().1);
+
+            render_pass.draw_light_model(&self.object.model, &[bind_group]);
 
             render_pass.set_pipeline(pipeline.two().0);
 
@@ -1007,7 +1018,7 @@ impl Gfx {
         );
 
         self.light.object.eye =
-            Quat::from_axis_angle(vec3(0.0, 1.0, 0.0), 0.01) * self.light.object.eye;
+            Quat::from_axis_angle(vec3(0.0, 0.0, 1.0), 0.01) * self.light.object.eye;
         self.light.uniform.update_view_proj(&self.light.object);
 
         // let old_position: Vec3 = self.light.uniform.view_pos;

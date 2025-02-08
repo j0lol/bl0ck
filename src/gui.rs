@@ -191,6 +191,12 @@ impl EguiRenderer {
                 ui.add(
                     egui::Slider::new(&mut gfx.camera.object.eye.z, -500.0..=500.0).text("Cam Z"),
                 );
+                ui.separator();
+
+                ui.checkbox(
+                    &mut gfx.interact.shadows,
+                    "Light shadowing (via shadow-maps)",
+                );
 
                 ui.separator();
                 ui.horizontal(|ui| {

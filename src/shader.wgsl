@@ -75,7 +75,7 @@ var t_shadow: texture_depth_2d;
 @group(1) @binding(3)
 var s_shadow: sampler_comparison;
 
-
+// TODO CITE: wgpu/examples/shadow
 fn fetch_shadow(homogeneous_coords: vec4<f32>) -> f32 {
     if (homogeneous_coords.w <= 0.0) {
         return 1.0;
@@ -90,7 +90,7 @@ fn fetch_shadow(homogeneous_coords: vec4<f32>) -> f32 {
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn fs_main(in: VertexOutput, @builtin(front_facing) face: bool) -> @location(0) vec4<f32> {
     let light_color = vec3<f32>(1.0, 1.0, 1.0);
 
     let object_color: vec4<f32> = textureSample(t_diffuse, s_diffuse, in.tex_coords);
@@ -105,12 +105,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view_dir = normalize(camera.view_pos.xyz - in.world_position.xyz);
     let half_dir = normalize(view_dir + light_dir);
 
-    let specular_strength = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
-    let specular_color = specular_strength * light_color;
-
     let shadow = fetch_shadow(light.view_proj * vec4<f32>(in.world_position, 1.0));
 
-    let result = (ambient_color + diffuse_color + specular_color) * shadow * object_color.xyz;
+
+    let specular_strength = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
+
+    // Disable specular effects in shadow
+    let specular_color = specular_strength * light_color * shadow;
+
+//    let result = (ambient_color + diffuse_color + specular_color) * shadow * object_color.xyz;
+    let result = (ambient_color + diffuse_color + specular_color) * (shadow * 0.5 + 0.5);
 
     return vec4<f32>(result, object_color.a);
 }

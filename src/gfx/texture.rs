@@ -13,11 +13,16 @@ impl Texture {
     pub fn create_depth_texture(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
+        size_override: Option<(u32, u32)>,
         label: &str,
     ) -> Self {
         let size = wgpu::Extent3d {
-            width: config.width.max(1),
-            height: config.height.max(1),
+            width: size_override
+                .map(|(w, _h)| w)
+                .unwrap_or(config.width.max(1)),
+            height: size_override
+                .map(|(_w, h)| h)
+                .unwrap_or(config.height.max(1)),
             depth_or_array_layers: 1,
         };
 
