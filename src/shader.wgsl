@@ -105,6 +105,30 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) face: bool) -> @location(0) 
     let view_dir = normalize(camera.view_pos.xyz - in.world_position.xyz);
     let half_dir = normalize(view_dir + light_dir);
 
+    // https://github.com/mcclure/webgpu-tutorial-rs/blob/webgpu-tutorial/src/shader.wgsl
+    // This one-dimensional separable blur filter samples five points and averages them by different amounts.
+    // If we do it on two separate axes, we get a 2d blur.
+    // Weights and offsets taken from http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/
+
+    // The weights for the center, one-point-out, and two-point-out samples
+    const WEIGHT0 = 0.2270270270;
+    const WEIGHT1 = 0.3162162162;
+    const WEIGHT2 = 0.0702702703;
+
+    // The distances-from-center for the samples
+    const OFFSET1 = 1.3846153846;
+    const OFFSET2 = 3.2307692308;
+
+    let blur_resolution = vec2<f32>(60.0, 60.0);
+
+    var shadow_guassian = 0.0;
+    shadow_guassian += fetch_shadow(light.view_proj* vec4<f32>(in.world_position, 1.0)) * WEIGHT0;
+    shadow_guassian += fetch_shadow(light.view_proj* vec4<f32>(in.world_position.xy + blur_resolution * OFFSET1, in.world_position.z, 1.0)) * WEIGHT1;
+    shadow_guassian += fetch_shadow(light.view_proj* vec4<f32>(in.world_position.xy - blur_resolution * OFFSET1, in.world_position.z, 1.0)) * WEIGHT1;
+    shadow_guassian += fetch_shadow(light.view_proj* vec4<f32>(in.world_position.xy + blur_resolution * OFFSET2, in.world_position.z, 1.0)) * WEIGHT2;
+    shadow_guassian += fetch_shadow(light.view_proj* vec4<f32>(in.world_position.xy - blur_resolution * OFFSET2, in.world_position.z, 1.0)) * WEIGHT2;
+
+    let shadow_strength = 0.7;
     let shadow = fetch_shadow(light.view_proj * vec4<f32>(in.world_position, 1.0));
 
 
@@ -114,7 +138,7 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) face: bool) -> @location(0) 
     let specular_color = specular_strength * light_color * shadow;
 
 //    let result = (ambient_color + diffuse_color + specular_color) * shadow * object_color.xyz;
-    let result = (ambient_color + diffuse_color + specular_color) * (shadow * 0.5 + 0.5);
+    let result = (ambient_color + diffuse_color + specular_color) * (shadow_guassian * 0.7 + (1.0 - 0.7)) * object_color.xyz;
 
     return vec4<f32>(result, object_color.a);
 }

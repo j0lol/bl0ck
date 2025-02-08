@@ -193,9 +193,13 @@ impl EguiRenderer {
                 );
                 ui.separator();
 
-                ui.checkbox(
-                    &mut gfx.interact.shadows,
-                    "Light shadowing (via shadow-maps)",
+                // ui.checkbox(
+                //     &mut gfx.interact.shadows,
+                //     "Light shadowing (via shadow-maps)",
+                // );
+
+                ui.add(
+                    egui::Slider::new(&mut gfx.interact.sun_speed, 0.000001..=0.01).text("Sun rotational speed (radians per frame)").logarithmic(true),
                 );
 
                 ui.separator();

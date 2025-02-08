@@ -1,9 +1,11 @@
 use bincode::{Decode, Encode};
 use glam::{ivec2, ivec3, IVec2, IVec3};
 use itertools::Itertools;
+#[cfg(not(target_arch = "wasm32"))]
 use rand::{
     distr::{Distribution, StandardUniform},
-    Rng,
+    rngs::OsRng,
+    Rng, TryRngCore,
 };
 use std::collections::HashMap;
 
@@ -39,6 +41,7 @@ pub enum Block {
     Brick,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Distribution<Block> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
         match rng.random_range(0..=1) {
@@ -110,7 +113,10 @@ pub fn chunk_scramble_dispatch(method: ChunkScramble) -> fn(IVec3) -> Chunk {
                 .unwrap(),
         },
         C::Random => |_| Chunk {
+            #[cfg(not(target_arch = "wasm32"))]
             blocks: rand::rng().random(),
+            #[cfg(target_arch = "wasm32")]
+            blocks: { panic!("i hate the web") },
         },
     }
 }

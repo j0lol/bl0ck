@@ -42,6 +42,7 @@ pub struct InteractState {
     pub clear_color: wgpu::Color,
     pub wireframe: bool,
     pub shadows: bool,
+    pub sun_speed: f32,
 }
 pub struct ObjectState {
     pub model: model::Model,
@@ -214,7 +215,7 @@ impl Gfx {
     pub async fn new(window: std::sync::Arc<winit::window::Window>) -> Self {
         // 0 size can cause web-app to crash, better to enforce this than not.
         let size = if cfg!(target_arch = "wasm32") {
-            winit::dpi::PhysicalSize {
+            PhysicalSize {
                 width: WASM_WIN_SIZE.0,
                 height: WASM_WIN_SIZE.1,
             }
@@ -331,14 +332,6 @@ impl Gfx {
         let mut camera_uniform = camera::CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
 
-        // let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //     layout: &camera_bind_group_layout,
-        //     entries: &[wgpu::BindGroupEntry {
-        //         binding: 0,
-        //         resource: camera_buffer.as_entire_binding(),
-        //     }],
-        //     label: Some("camera_bind_group"),
-        // });
         let camera_state = CameraState {
             object: camera,
             controller: camera_controller,
@@ -380,132 +373,18 @@ impl Gfx {
         let mut light_uniform = camera::CameraUniform::new();
         light_uniform.update_view_proj(&light);
 
-        //let light_uniform = LightUniform::new(Vec3::splat(90.0).with_y(40.0), vec3(1.0, 1.0, 1.0));
-
-        log::info!("Shadowmap setup!");
-        let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Shadow Sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            compare: Some(wgpu::CompareFunction::LessEqual),
-            ..Default::default()
-        });
-
-        log::info!("asdfasdgf");
-
         let shadow_map = texture::Texture::create_depth_texture(
             &device,
             &surface_config,
-            Some((1000, 1000)),
+            Some({
+                if cfg!(target_arch = "wasm32") {
+                    (2048, 2048)
+                } else {
+                    (5000, 5000)
+                }
+            }),
             "Shadow Map",
         );
-        // let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
-        //     size: wgpu::Extent3d {
-        //         width: 1024,
-        //         height: 1024,
-        //         depth_or_array_layers: 10,
-        //     },
-        //     mip_level_count: 1,
-        //     sample_count: 1,
-        //     dimension: wgpu::TextureDimension::D2,
-        //     format: wgpu::TextureFormat::Depth32Float,
-        //     usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-        //     label: Some("Shadow texture"),
-        //     view_formats: &[],
-        // });
-        // For forward pass
-        // let shadow_view = shadow_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        log::info!("alskjgsdl;kfgjs;dkjl");
-        // For light in shadow pass
-        // let light_shadow_map = shadow_texture.create_view(&wgpu::TextureViewDescriptor {
-        //     label: Some("Shadow Map"),
-        //     format: Some(wgpu::TextureFormat::Depth32Float),
-        //     dimension: Some(wgpu::TextureViewDimension::D2),
-        //     usage: None,
-        //     aspect: wgpu::TextureAspect::All,
-        //     base_mip_level: 0,
-        //     mip_level_count: None,
-        //     base_array_layer: 0 as u32,
-        //     array_layer_count: Some(1),
-        // });
-
-        // let shadow_map_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Shadow Map Buffer"),
-        //     contents: bytemuck::cast_slice(&[camera_uniform]),
-        //     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        // });
-
-        // let shadow_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        //     entries: &[wgpu::BindGroupLayoutEntry {
-        //         binding: 0,
-        //         visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-        //         ty: wgpu::BindingType::Buffer {
-        //             ty: wgpu::BufferBindingType::Uniform,
-        //             has_dynamic_offset: false,
-        //             min_binding_size: None,
-        //         },
-        //         count: None,
-        //     }],
-        //     label: None,
-        // });
-        // let shadow_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //     layout: &shadow_bgl,
-        //     entries: &[wgpu::BindGroupEntry {
-        //         binding: 0,
-        //         resource: light_buffer.as_entire_binding(),
-        //     }],
-        //     label: None,
-        // });
-
-        log::info!("Pipeline setup!");
-        // New stuff goes above here!
-
-        log::info!("Pipeline/Globals setup!");
-        // let render_pipeline = {
-        //     let shader = wgpu::ShaderModuleDescriptor {
-        //         label: Some("Normal Shader"),
-        //         source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        //     };
-        //     create_render_pipeline(
-        //         &device,
-        //         &render_pipeline_layout,
-        //         surface_config.format,
-        //         Some(texture::Texture::DEPTH_FORMAT),
-        //         &[model::ModelVertex::desc(), InstanceRaw::desc()],
-        //         shader,
-        //         wgpu::PolygonMode::Fill,
-        //         Some("Normal Render Pipeline"),
-        //     )
-        // };
-        //
-        // //let fill_pipeline = render_pipeline(wgpu::PolygonMode::Fill);
-        // let wireframe_render_pipeline = if (device.features() & wgpu::Features::POLYGON_MODE_LINE)
-        //     == wgpu::Features::POLYGON_MODE_LINE
-        // {
-        //     Some({
-        //         let shader = wgpu::ShaderModuleDescriptor {
-        //             label: Some("Normal Shader"),
-        //             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        //         };
-        //         create_render_pipeline(
-        //             &device,
-        //             &render_pipeline_layout,
-        //             surface_config.format,
-        //             Some(texture::Texture::DEPTH_FORMAT),
-        //             &[model::ModelVertex::desc(), InstanceRaw::desc()],
-        //             shader,
-        //             wgpu::PolygonMode::Line,
-        //             Some("Normal Render Pipeline"),
-        //         )
-        //     })
-        // } else {
-        //     None
-        // };
 
         fn bgl_t(binding: u32) -> wgpu::BindGroupLayoutEntry {
             wgpu::BindGroupLayoutEntry {
@@ -736,6 +615,7 @@ impl Gfx {
                     a: 1.0,
                 },
                 shadows: true,
+                sun_speed: 0.001,
             },
             object: ObjectState {
                 model: obj_model,
@@ -751,7 +631,7 @@ impl Gfx {
         }
     }
 
-    pub(crate) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+    pub(crate) fn resize(&mut self, new_size: PhysicalSize<u32>) {
         if new_size.width == 0 || new_size.height == 0 {
             return;
         }
@@ -888,14 +768,11 @@ impl Gfx {
                 0..self.object.instances.len() as u32,
                 &[bind_group],
             );
-
-            drop(render_pass);
         }
 
         encoder.pop_debug_group();
 
         encoder.push_debug_group("Forward pass");
-
         {
             let Pass {
                 pipeline,
@@ -928,45 +805,17 @@ impl Gfx {
             render_pass.set_vertex_buffer(1, self.object.instance_buffer.slice(..));
 
             use crate::gfx::model::DrawLight;
-            // render_pass.set_pipeline(pipeline.two().1);
-            // render_pass.draw_light_model(
-            //     &self.object.model,
-            //     &self.camera.bind_group,
-            //     &self.light.bind_group,
-            // );
-
-            // render_pass.set_pipeline(&self.render_pipelines.cam);
-            // render_pass.draw_model_instanced(
-            //     &self.object.model,
-            //     0..self.object.instances.len() as u32,
-            //     &self.camera.bind_group,
-            //     &self.light.bind_group,
-            // );
-
-            /*            render_pass.set_pipeline(
-                self.interact
-                    .wireframe
-                    .then_some(self.render_pipelines.camera_wireframe.as_ref())
-                    .flatten()
-                    .unwrap_or(&self.render_pipelines.camera),
-            );*/
 
             render_pass.set_pipeline(pipeline.two().1);
-
             render_pass.draw_light_model(&self.object.model, &[bind_group]);
 
             render_pass.set_pipeline(pipeline.two().0);
-
             render_pass.draw_model_instanced(
                 &self.object.model,
                 0..self.object.instances.len() as u32,
                 &[bind_group],
             );
-
-            drop(render_pass);
         }
-
-        // drop render pass before we submit to drop the mut borrow on encoder
 
         encoder.pop_debug_group();
 
@@ -1003,12 +852,10 @@ impl Gfx {
     }
 
     pub fn update(&mut self, world: &mut World) {
+        // Camera update
         self.camera
             .controller
             .update_camera(&mut self.camera.object);
-
-        // dbg
-        //self.camera.object.eye = self.light.uniform.view_pos;
 
         self.camera.uniform.update_view_proj(&self.camera.object);
         self.queue.write_buffer(
@@ -1017,22 +864,18 @@ impl Gfx {
             bytemuck::cast_slice(&[self.camera.uniform]),
         );
 
-        self.light.object.eye =
-            Quat::from_axis_angle(vec3(0.0, 0.0, 1.0), 0.01) * self.light.object.eye;
+        // Light update
+        self.light.object.eye = Quat::from_axis_angle(vec3(0.0, 0.0, 1.0), self.interact.sun_speed)
+            * self.light.object.eye;
         self.light.uniform.update_view_proj(&self.light.object);
-
-        // let old_position: Vec3 = self.light.uniform.view_pos;
-        // self.light.uniform.view_pos =
-        //     Quat::from_axis_angle(vec3(0.0, 1.0, 0.0), 0.01) * old_position;
-        // self.light
-        //     .uniform
-        //     .update_view_proj(self.surface_config.width as f32 / self.surface_config.height as f32);
 
         self.queue.write_buffer(
             &self.forward_pass.uniform_bufs[1],
             0,
             bytemuck::cast_slice(&[self.light.uniform]),
         );
+
+        // Object update
         if self.object.remake {
             self.update_instance_buf(&world.map);
         }
@@ -1040,30 +883,6 @@ impl Gfx {
 
     pub fn input(&mut self, event: &WindowEvent, window_size: PhysicalSize<u32>) -> bool {
         self.camera.controller.process_events(event);
-
-        // Deprecated! Replaced with EGUI debug ui.
-        // match event {
-        //     WindowEvent::CursorMoved {
-        //         device_id: _,
-        //         position,
-        //     } => {}
-        //     WindowEvent::KeyboardInput {
-        //         event:
-        //             KeyEvent {
-        //                 state,
-        //                 physical_key: PhysicalKey::Code(keycode),
-        //                 ..
-        //             },
-        //         ..
-        //     } => {
-        //         let is_pressed = *state == ElementState::Pressed;
-        //         if *keycode == KeyCode::KeyL && is_pressed {
-        //             self.interact.wireframe = !self.interact.wireframe;
-        //             return true;
-        //         }
-        //     }
-        //     _ => {}
-        // }
 
         false
     }

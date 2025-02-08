@@ -9,7 +9,13 @@
     "Cargo.toml",
     "justfile",
     "cube.blend",
-    "cube.blend1"
+    "cube.blend1",
+    ".first-init",
+    ".idea",
+    "gen",
+    "mobile.toml",
+    "save.bl0ck",
+    ".gitignore"
   ],
   "remotePath" : "\/var\/www\/vps.j0.lol\/fyptest",
   "server" : "J0.lol",
