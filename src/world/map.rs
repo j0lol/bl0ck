@@ -1,7 +1,10 @@
 use bincode::{Decode, Encode};
 use glam::{ivec2, ivec3, IVec2, IVec3};
 use itertools::Itertools;
-use rand::{distr::{Distribution, StandardUniform}, Rng};
+use rand::{
+    distr::{Distribution, StandardUniform},
+    Rng,
+};
 use std::collections::HashMap;
 
 // I have arbitrarily decided that this is (x,z,y) where +y is up.
@@ -45,11 +48,10 @@ impl Distribution<Block> for StandardUniform {
     }
 }
 
-
 fn new_chunk(world_pos: IVec3) -> Chunk {
     let blocks = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2)
         .map(|(x, z, y)| {
-            let tile_pos = ivec3(x as _,y as _,z as _);
+            let tile_pos = ivec3(x as _, y as _, z as _);
 
             // let (xf, zf, yf) = (
             //     (x as i32 + (world_x * CHUNK_SIZE.0 as i32)) as f32,
@@ -58,10 +60,12 @@ fn new_chunk(world_pos: IVec3) -> Chunk {
             // );
             let tile_pos_worldspace = (tile_pos + (world_pos * CHUNK_SIZE.0 as i32)).as_vec3();
 
-            let sines = f32::sin(tile_pos_worldspace.x * 0.1) + f32::sin(tile_pos_worldspace.z * 0.1);
+            let sines =
+                f32::sin(tile_pos_worldspace.x * 0.1) + f32::sin(tile_pos_worldspace.z * 0.1);
 
             // Pretty arbitrary numbers! Just trying to get something interesting
-            let n = (((sines / 4. + 0.5) * CHUNK_SIZE.2 as f32).round() as i32) <= tile_pos_worldspace.y as _;
+            let n = (((sines / 4. + 0.5) * CHUNK_SIZE.2 as f32).round() as i32)
+                <= tile_pos_worldspace.y as _;
 
             if n {
                 Block::Brick
@@ -82,10 +86,9 @@ pub fn new_map() -> WorldMap {
     let mut chunks = HashMap::new();
 
     for (x, z) in itertools::iproduct!(iter.clone(), iter) {
-        let p = ivec3(x,0,z);
+        let p = ivec3(x, 0, z);
         chunks.insert(p.into(), new_chunk(p));
         chunks.insert(p.with_y(1).into(), new_chunk(p.with_y(1)));
-
     }
 
     WorldMap { chunks }
@@ -106,11 +109,9 @@ pub fn chunk_scramble_dispatch(method: ChunkScramble) -> fn(IVec3) -> Chunk {
                 .collect_array()
                 .unwrap(),
         },
-        C::Random => |_| {
-            Chunk {
-                blocks: rand::rng().random()
-            }
-        }
+        C::Random => |_| Chunk {
+            blocks: rand::rng().random(),
+        },
     }
 }
 

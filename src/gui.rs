@@ -2,7 +2,11 @@ use egui_winit::EventResponse;
 use glam::{ivec2, ivec3, IVec2};
 use winit::window::Window;
 
-use crate::{gfx::Gfx, world::map::{chunk_scramble_dispatch, ChunkScramble}, world::World};
+use crate::{
+    gfx::Gfx,
+    world::map::{chunk_scramble_dispatch, ChunkScramble},
+    world::World,
+};
 
 pub struct EguiRenderer {
     state: egui_winit::State,
@@ -54,12 +58,12 @@ impl EguiRenderer {
             renderer,
             frame_started: false,
             scale_factor: 1.0,
-            chunk_influence: (0,0)
+            chunk_influence: (0, 0),
         }
     }
 
     pub fn handle_input(&mut self, window: &Window, event: &winit::event::WindowEvent) -> bool {
-        let EventResponse {consumed, ..} = self.state.on_window_event(window, event);
+        let EventResponse { consumed, .. } = self.state.on_window_event(window, event);
         consumed
     }
 
@@ -83,7 +87,8 @@ impl EguiRenderer {
         }
 
         #[cfg(not(target_arch = "wasm32"))]
-        self.ctx().set_pixels_per_point(screen_descriptor.pixels_per_point);
+        self.ctx()
+            .set_pixels_per_point(screen_descriptor.pixels_per_point);
 
         let full_output = self.ctx().end_pass();
 
@@ -96,9 +101,7 @@ impl EguiRenderer {
             .tessellate(full_output.shapes, self.ctx().pixels_per_point());
 
         #[cfg(target_arch = "wasm32")]
-        let tris = self
-            .ctx()
-            .tessellate(full_output.shapes, 1.0);
+        let tris = self.ctx().tessellate(full_output.shapes, 1.0);
 
         for (id, image_delta) in &full_output.textures_delta.set {
             self.renderer
@@ -168,14 +171,26 @@ impl EguiRenderer {
 
                 ui.separator();
 
-                ui.add(egui::Slider::new(&mut gfx.camera.controller.speed, 0.1..=10.0).text("Cam Speed"));
+                ui.add(
+                    egui::Slider::new(&mut gfx.camera.controller.speed, 0.1..=10.0)
+                        .text("Cam Speed"),
+                );
 
                 ui.separator();
 
-                ui.label(format!("The camera is pointing at {:?}", gfx.camera.positioning.target));
-                ui.add(egui::Slider::new(&mut gfx.camera.positioning.eye.x, -500.0..=500.0).text("Cam X"));
-                ui.add(egui::Slider::new(&mut gfx.camera.positioning.eye.y, -500.0..=500.0).text("Cam Y"));
-                ui.add(egui::Slider::new(&mut gfx.camera.positioning.eye.z, -500.0..=500.0).text("Cam Z"));
+                ui.label(format!(
+                    "The camera is pointing at {:?}",
+                    gfx.camera.object.target
+                ));
+                ui.add(
+                    egui::Slider::new(&mut gfx.camera.object.eye.x, -500.0..=500.0).text("Cam X"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut gfx.camera.object.eye.y, -500.0..=500.0).text("Cam Y"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut gfx.camera.object.eye.z, -500.0..=500.0).text("Cam Z"),
+                );
 
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -200,7 +215,7 @@ impl EguiRenderer {
                 });
 
                 ui.horizontal(|ui| {
-                    let pos = ivec3(chunk_x,0,chunk_z);
+                    let pos = ivec3(chunk_x, 0, chunk_z);
 
                     if ui.button("Random").clicked() {
                         let c = chunk_scramble_dispatch(ChunkScramble::Random)(pos);
@@ -221,9 +236,7 @@ impl EguiRenderer {
 
                 ui.separator();
 
-
                 ui.horizontal(|ui| {
-
                     if ui.button("Save").clicked() {
                         world.save().unwrap();
                     }
@@ -231,10 +244,7 @@ impl EguiRenderer {
                         *world = World::load().unwrap();
                         gfx.object.remake = true;
                     }
-
                 });
-
-
             });
 
         self.scale_factor = scale_factor;

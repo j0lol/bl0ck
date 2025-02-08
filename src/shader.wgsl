@@ -18,13 +18,9 @@ struct Camera {
 @group(1) @binding(0)
 var<uniform> camera: Camera;
 
+@group(1) @binding(1)
+var<uniform> light: Camera;
 
-struct Light {
-    position: vec3<f32>,
-    color: vec3<f32>,
-}
-@group(2) @binding(0)
-var<uniform> light: Light;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -74,24 +70,47 @@ var t_diffuse: texture_2d<f32>;
 @group(0) @binding(1)
 var s_diffuse: sampler;
 
+@group(1) @binding(2)
+var t_shadow: texture_depth_2d;
+@group(1) @binding(3)
+var s_shadow: sampler_comparison;
+
+
+fn fetch_shadow(homogeneous_coords: vec4<f32>) -> f32 {
+    if (homogeneous_coords.w <= 0.0) {
+        return 1.0;
+    }
+    // compensate for the Y-flip difference between the NDC and texture coordinates
+    let flip_correction = vec2<f32>(0.5, -0.5);
+    // compute texture coordinates for shadow lookup
+    let proj_correction = 1.0 / homogeneous_coords.w;
+    let light_local = homogeneous_coords.xy * flip_correction * proj_correction + vec2<f32>(0.5, 0.5);
+    // do the lookup, using HW PCF and comparison
+    return textureSampleCompareLevel(t_shadow, s_shadow, light_local, homogeneous_coords.z * proj_correction);
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let light_color = vec3<f32>(1.0, 1.0, 1.0);
+
     let object_color: vec4<f32> = textureSample(t_diffuse, s_diffuse, in.tex_coords);
 
     let ambient_strength = 0.1;
-    let ambient_color = light.color * ambient_strength;
+    let ambient_color = light_color * ambient_strength;
 
-    let light_dir = normalize(light.position - in.world_position);
+    let light_dir = normalize(light.view_pos.xyz - in.world_position.xyz);
     let diffuse_strength = max(dot(in.world_normal, light_dir), 0.0);
-    let diffuse_color = light.color * diffuse_strength;
+    let diffuse_color = light_color * diffuse_strength;
 
-    let view_dir = normalize(camera.view_pos.xyz - in.world_position);
+    let view_dir = normalize(camera.view_pos.xyz - in.world_position.xyz);
     let half_dir = normalize(view_dir + light_dir);
 
     let specular_strength = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
-    let specular_color = specular_strength * light.color;
+    let specular_color = specular_strength * light_color;
 
-    let result = (ambient_color + diffuse_color + specular_color) * object_color.xyz;
+    let shadow = fetch_shadow(light.view_proj * vec4<f32>(in.world_position, 1.0));
+
+    let result = (ambient_color + diffuse_color + specular_color) * shadow * object_color.xyz;
 
     return vec4<f32>(result, object_color.a);
 }

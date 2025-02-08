@@ -27,8 +27,8 @@ impl Camera {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
-    view_position: Vec4,
-    view_proj: Mat4,
+    pub view_position: Vec4,
+    pub view_proj: Mat4,
 }
 
 impl CameraUniform {
