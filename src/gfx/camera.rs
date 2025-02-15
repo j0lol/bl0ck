@@ -1,26 +1,190 @@
-use glam::{Mat4, Vec3, Vec4};
+use glam::{vec3, vec4, Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
+use instant::Duration;
+use itertools::Itertools;
+use std::f32::consts::FRAC_2_PI;
 use winit::{
-    event::{ElementState, KeyEvent, WindowEvent},
+    dpi::PhysicalPosition,
+    event::{ElementState, KeyEvent, MouseScrollDelta, WindowEvent},
     keyboard::KeyCode,
     keyboard::PhysicalKey,
 };
 
+const MAX_CAMERA_PITCH: f32 = (3.0/std::f32::consts::PI) - 0.0001;
+
+type Rad = f32;
+type Distance = f32;
+
+#[derive(Default, Debug)]
+pub struct AxisInput {
+   x: bool,
+   x_neg: bool,
+   y: bool,
+   y_neg: bool,
+   z: bool,
+   z_neg: bool,
+}
+
+impl AxisInput {
+   pub fn vec3(&self) -> Vec3 {
+      let x = match (self.x, self.x_neg) {
+         (true, false) => 1.0,
+         (false, true) => -1.0,
+         _ => 0.0
+      };
+
+      let y = match (self.y, self.y_neg) {
+         (true, false) => 1.0,
+         (false, true) => -1.0,
+         _ => 0.0
+      };
+
+      let z = match (self.z, self.z_neg) {
+         (true, false) => 1.0,
+         (false, true) => -1.0,
+         _ => 0.0
+      };
+      vec3(x,y,z)
+   }
+}
+
 pub struct Camera {
-    pub eye: Vec3,
-    pub target: Vec3,
-    pub up: Vec3,
-    pub aspect: f32,
-    pub fovy: f32,
-    pub znear: f32,
-    pub zfar: f32,
+    pub position: Vec3,
+    yaw: Rad,
+    pitch: Rad,
 }
 
 impl Camera {
-    pub fn build_view_projection_matrix(&self) -> Mat4 {
-        let view = Mat4::look_at_rh(self.eye, self.target, self.up);
-        let proj = Mat4::perspective_rh(self.fovy, self.aspect, self.znear, self.zfar);
+    pub fn new(position: Vec3, yaw: Rad, pitch: Rad) -> Self {
+        Self {
+            position,
+            yaw,
+            pitch,
+        }
+    }
 
-        proj * view
+    pub fn mat4(&self) -> Mat4 {
+        let (pitch_sin, pitch_cos) = self.pitch.sin_cos();
+        let (yaw_sin, yaw_cos) = self.yaw.sin_cos();
+
+        Mat4::look_to_rh(
+            self.position,
+            vec3(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalize(),
+            Vec3::Y,
+        )
+    }
+}
+
+pub struct Projection {
+    aspect: f32,
+    fovy: Rad,
+    znear: Distance,
+    zfar: Distance,
+}
+
+impl Projection {
+    pub fn new(resolution: Vec2, fovy: Rad, znear: Distance, zfar: Distance) -> Self {
+        Self {
+            aspect: resolution.x / resolution.y,
+            fovy,
+            znear,
+            zfar,
+        }
+    }
+
+    pub fn resize(&mut self, resolution: Vec2) {
+        self.aspect = resolution.x / resolution.y;
+    }
+
+    pub fn mat4(&self) -> Mat4 {
+        Mat4::perspective_rh(self.fovy, self.aspect, self.znear, self.zfar)
+    }
+}
+
+pub struct CameraController {
+    pub(crate) movement: AxisInput,
+    pub(crate) rotation: Vec2,
+    scroll: f32,
+    pub(crate) speed: f32,
+    sensitivity: f32,
+}
+
+impl CameraController {
+    pub fn new(speed: f32, sensitivity: f32) -> Self {
+        Self {
+            movement: AxisInput::default(),
+            rotation: Vec2::ZERO,
+            scroll: 0.,
+            speed,
+            sensitivity,
+        }
+    }
+
+    pub fn process_keyboard(
+        &mut self,
+        key: winit::keyboard::KeyCode,
+        state: winit::event::ElementState,
+    ) -> bool {
+        let pressed = state == ElementState::Pressed;
+
+        let field = match key {
+            KeyCode::KeyW | KeyCode::ArrowUp => &mut self.movement.x,
+            KeyCode::KeyS | KeyCode::ArrowDown => &mut self.movement.x_neg,
+            KeyCode::KeyD | KeyCode::ArrowRight => &mut self.movement.z,
+            KeyCode::KeyA | KeyCode::ArrowLeft => &mut self.movement.z_neg,
+            KeyCode::Space => &mut self.movement.y,
+            KeyCode::ShiftLeft => &mut self.movement.y_neg,
+            _ => {
+                return false;
+            }
+        };
+        *field = pressed;
+
+        true
+    }
+
+    pub fn process_mouse(&mut self, mouse: Vec2) {
+        self.rotation += mouse;
+    }
+
+    pub fn process_scroll(&mut self, delta: &MouseScrollDelta) {
+        let line_px = 100.0;
+
+        self.scroll = -match delta {
+            MouseScrollDelta::LineDelta(_, scroll) => scroll * line_px,
+            MouseScrollDelta::PixelDelta(PhysicalPosition { y: scroll, .. }) => *scroll as f32,
+        };
+    }
+
+    pub fn update_camera(&mut self, camera: &mut Camera, duration: Duration) {
+        let dt = duration.as_secs_f32();
+        let movement = self.movement.vec3();
+
+        // X/Z movement
+        let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
+        let forward = vec3(yaw_cos, 0.0, yaw_sin).normalize();
+        let right = vec3(-yaw_sin, 0.0, yaw_cos).normalize();
+        camera.position += forward * movement.x * self.speed * dt;
+        camera.position += right * movement.z * self.speed * dt;
+
+        // Move toward focal point
+        let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
+        let toward_focus = vec3(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalize();
+        camera.position += toward_focus * self.scroll * self.speed * self.sensitivity * dt;
+        self.scroll = 0.0;
+
+        camera.position.y += movement.y * self.speed * dt;
+
+        camera.yaw += self.rotation.x * self.sensitivity * dt;
+        camera.pitch += -self.rotation.y * self.sensitivity * dt;
+
+        self.rotation = Vec2::ZERO;
+
+        // Keep the camera's angle from going too high/low.
+        if camera.pitch < -MAX_CAMERA_PITCH {
+            camera.pitch = -MAX_CAMERA_PITCH;
+        } else if camera.pitch > MAX_CAMERA_PITCH {
+            camera.pitch = MAX_CAMERA_PITCH;
+        }
     }
 }
 
@@ -39,86 +203,9 @@ impl CameraUniform {
         }
     }
 
-    pub fn update_view_proj(&mut self, camera: &Camera) {
-        self.view_position = camera.eye.extend(1.0);
-        self.view_proj = camera.build_view_projection_matrix();
+    pub fn update_view_proj(&mut self, camera: &Camera, projection: &Projection) {
+        self.view_position = camera.position.extend(1.0);
+        self.view_proj = projection.mat4() * camera.mat4();
     }
 }
 
-pub struct CameraController {
-    pub speed: f32,
-    buttons: glam::BVec4, // fwd, lft, bwd, rht
-}
-
-impl CameraController {
-    pub fn new(speed: f32) -> Self {
-        Self {
-            speed,
-            buttons: glam::BVec4::FALSE,
-        }
-    }
-
-    pub fn process_events(&mut self, event: &WindowEvent) -> bool {
-        match event {
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        state,
-                        physical_key: PhysicalKey::Code(keycode),
-                        ..
-                    },
-                ..
-            } => {
-                let is_pressed = *state == ElementState::Pressed;
-                match keycode {
-                    KeyCode::KeyW | KeyCode::ArrowUp => {
-                        self.buttons.x = is_pressed;
-                        true
-                    }
-                    KeyCode::KeyA | KeyCode::ArrowLeft => {
-                        self.buttons.y = is_pressed;
-                        true
-                    }
-                    KeyCode::KeyS | KeyCode::ArrowDown => {
-                        self.buttons.z = is_pressed;
-                        true
-                    }
-                    KeyCode::KeyD | KeyCode::ArrowRight => {
-                        self.buttons.w = is_pressed;
-                        true
-                    }
-                    _ => false,
-                }
-            }
-            _ => false,
-        }
-    }
-
-    pub fn update_camera(&self, camera: &mut Camera) {
-        let forward = camera.target - camera.eye;
-        let forward_norm = forward.normalize();
-        let forward_mag = forward.length();
-
-        // Prevents glitching when the camera gets too close to the
-        // center of the scene.
-        if self.buttons.x && forward_mag > self.speed {
-            camera.eye += forward_norm * self.speed;
-        }
-        if self.buttons.z {
-            camera.eye -= forward_norm * self.speed;
-        }
-
-        let right = forward_norm.cross(camera.up);
-
-        // Redo radius calc in case the forward/backward is pressed.
-        let forward = camera.target - camera.eye;
-        let forward_mag = forward.length();
-
-        if self.buttons.w {
-            camera.eye = camera.target - (forward + right * self.speed).normalize() * forward_mag;
-        }
-        if self.buttons.y {
-            camera.eye = camera.target - (forward - right * self.speed).normalize() * forward_mag;
-        }
-    }
-}

@@ -1,3 +1,4 @@
+use egui::{FontFamily, FontId, RichText};
 use egui_winit::EventResponse;
 use glam::{ivec2, ivec3, IVec2};
 use winit::window::Window;
@@ -13,7 +14,7 @@ pub struct EguiRenderer {
     renderer: egui_wgpu::Renderer,
     frame_started: bool,
     pub scale_factor: f32,
-    pub chunk_influence: (i32, i32),
+    pub chunk_influence: (i32, i32, i32),
 }
 
 impl EguiRenderer {
@@ -58,7 +59,7 @@ impl EguiRenderer {
             renderer,
             frame_started: false,
             scale_factor: 1.0,
-            chunk_influence: (0, 0),
+            chunk_influence: (0, 0, 0),
         }
     }
 
@@ -138,11 +139,11 @@ impl EguiRenderer {
         self.frame_started = false;
     }
 
-    pub fn update(&mut self, gfx: &mut Gfx, world: &mut World) {
+    pub fn update(&mut self, gfx: &mut Gfx, world: &mut World, dt: instant::Duration) {
         let ctx = self.ctx();
 
         let mut scale_factor = self.scale_factor;
-        let (mut chunk_x, mut chunk_z) = self.chunk_influence;
+        let (mut chunk_x, mut chunk_y, mut chunk_z) = self.chunk_influence;
 
         egui::Window::new("Debug Menu")
             .resizable(true)
@@ -150,6 +151,7 @@ impl EguiRenderer {
             .default_open(false)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
+                    ui.label(format!("FPS: {}", 1.0 / dt.as_secs_f32()));
                     ui.label("Draw Color");
 
                     // Absolutely disgusting code!
@@ -172,25 +174,32 @@ impl EguiRenderer {
                 ui.separator();
 
                 ui.add(
-                    egui::Slider::new(&mut gfx.camera.controller.speed, 0.1..=10.0)
-                        .text("Cam Speed"),
+                    egui::Slider::new(&mut gfx.camera.controller.speed, 0.1..=1000.0)
+                        .text("Cam Speed").logarithmic(true),
                 );
 
                 ui.separator();
 
                 ui.label(format!(
-                    "The camera is pointing at {:?}",
-                    gfx.camera.object.target
+                    "Camera input \"bitfield\":"
                 ));
-                ui.add(
-                    egui::Slider::new(&mut gfx.camera.object.eye.x, -500.0..=500.0).text("Cam X"),
-                );
-                ui.add(
-                    egui::Slider::new(&mut gfx.camera.object.eye.y, -500.0..=500.0).text("Cam Y"),
-                );
-                ui.add(
-                    egui::Slider::new(&mut gfx.camera.object.eye.z, -500.0..=500.0).text("Cam Z"),
-                );
+                ui.label(RichText::new(format!(
+                    "{:?}",
+                    gfx.camera.controller.movement
+                )).font(FontId::monospace(11.0)));
+                ui.label(format!(
+                    "... which is a movement vector of: {:?}",
+                    gfx.camera.controller.movement.vec3()
+                ));
+                // ui.add(
+                //     egui::Slider::new(&mut gfx.camera.object.position.x, -500.0..=500.0).text("Cam X"),
+                // );
+                // ui.add(
+                //     egui::Slider::new(&mut gfx.camera.object.position.y, -500.0..=500.0).text("Cam Y"),
+                // );
+                // ui.add(
+                //     egui::Slider::new(&mut gfx.camera.object.position.z, -500.0..=500.0).text("Cam Z"),
+                // );
                 ui.separator();
 
                 // ui.checkbox(
@@ -199,7 +208,7 @@ impl EguiRenderer {
                 // );
 
                 ui.add(
-                    egui::Slider::new(&mut gfx.interact.sun_speed, 0.000001..=0.01).text("Sun rotational speed (radians per frame)").logarithmic(true),
+                    egui::Slider::new(&mut gfx.interact.sun_speed, 0.1..=100.0).text("Sun rotational speed (radians per second)").logarithmic(true),
                 );
 
                 ui.separator();
@@ -218,14 +227,17 @@ impl EguiRenderer {
                 ui.horizontal(|ui| {
                     ui.label("Scramble chunk at...");
                     ui.add(egui::DragValue::new(&mut chunk_x).speed(0.1));
-                    ui.label("x, ");
+                    ui.label("x ");
+
+                    ui.add(egui::DragValue::new(&mut chunk_y).speed(0.1));
+                    ui.label("y ");
 
                     ui.add(egui::DragValue::new(&mut chunk_z).speed(0.1));
-                    ui.label("z. ");
+                    ui.label("z.");
                 });
 
                 ui.horizontal(|ui| {
-                    let pos = ivec3(chunk_x, 0, chunk_z);
+                    let pos = ivec3(chunk_x, chunk_y, chunk_z);
 
                     if ui.button("Random").clicked() {
                         let c = chunk_scramble_dispatch(ChunkScramble::Random)(pos);
@@ -258,6 +270,6 @@ impl EguiRenderer {
             });
 
         self.scale_factor = scale_factor;
-        self.chunk_influence = (chunk_x, chunk_z);
+        self.chunk_influence = (chunk_x, chunk_y, chunk_z);
     }
 }

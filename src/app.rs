@@ -1,16 +1,20 @@
 use crate::{
-    gfx::{Gfx, GfxBuilder, MaybeGfx}, gui::EguiRenderer, world::map::{new_map, WorldMap}, world::World
+    gfx::{Gfx, GfxBuilder, MaybeGfx},
+    gui::EguiRenderer,
+    world::map::new_map,
+    world::World,
 };
+use glam::{dvec2, vec2};
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, KeyEvent, WindowEvent},
+    event::{DeviceEvent, DeviceId, ElementState, KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowAttributes, WindowId},
 };
 
-pub(crate) const WASM_WIN_SIZE: (u32, u32) = (640*2, 480*2);
+pub(crate) const WASM_WIN_SIZE: (u32, u32) = (640 * 2, 480 * 2);
 
 // TODO citation:
 // https://github.com/Bentebent/rita/ for winit 29.0->30.0 migration
@@ -23,6 +27,7 @@ pub struct Application {
     window: Option<Arc<Window>>,
     egui: Option<EguiRenderer>,
     world: World,
+    last_render_time: instant::Instant,
 }
 
 impl Application {
@@ -32,7 +37,8 @@ impl Application {
             gfx_state: MaybeGfx::Builder(GfxBuilder::new(event_loop.create_proxy())),
             window: None,
             egui: None,
-            world: World { map: new_map() }
+            world: World { map: new_map() },
+            last_render_time: instant::Instant::now(),
         }
     }
 }
@@ -74,6 +80,17 @@ impl ApplicationHandler<Gfx> for Application {
         self.window = Some(window);
     }
 
+    fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
+        if let (MaybeGfx::Graphics(gfx), DeviceEvent::MouseMotion { delta }) =
+            (&mut self.gfx_state, event)
+        {
+            if gfx.camera.mouse_focused {
+            gfx.camera
+                .controller
+                .process_mouse(dvec2(delta.0, delta.1).as_vec2())
+            }
+        }
+    }
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, gfx: Gfx) {
         if let Some(window) = &self.window {
             let egui = EguiRenderer::new(&gfx.device, gfx.surface_config.format, None, 1, window);
@@ -101,7 +118,7 @@ impl ApplicationHandler<Gfx> for Application {
                 .egui
                 .as_mut()
                 .map(|egui| egui.handle_input(window, &event))
-                .is_some_and(|x| x)
+                .is_some_and(std::convert::identity)
             {
                 return;
             }
@@ -112,29 +129,71 @@ impl ApplicationHandler<Gfx> for Application {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
 
-            WindowEvent::KeyboardInput { event, .. } => {
-                if matches!(
-                    event,
-                    KeyEvent {
-                        state: ElementState::Pressed,
-                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                        ..
+            WindowEvent::MouseInput {
+                button: winit::event::MouseButton::Left,
+                state,
+                ..
+            } => {
+                if !gfx.camera.mouse_focused {
+                    gfx.camera.mouse_focused = true;
+                    if let Some(ref window) = &self.window {
+                        match window.set_cursor_grab(winit::window::CursorGrabMode::Locked) {
+                            Ok(()) => {
+                                window.set_cursor_visible(false);
+                            }
+                            Err(e) => {
+                                log::error!("{e}");
+                            }
+                        }
                     }
-                ) {
-                    event_loop.exit()
                 }
             }
+
+            WindowEvent::KeyboardInput { event, .. } => match event {
+                KeyEvent {
+                    state: ElementState::Pressed,
+                    physical_key: PhysicalKey::Code(KeyCode::KeyX),
+                    ..
+                } => event_loop.exit(),
+
+                KeyEvent {
+                    state: ElementState::Pressed,
+                    physical_key: PhysicalKey::Code(KeyCode::Escape),
+                    ..
+                } => {
+                    if let Some(ref window) = &self.window {
+                        if gfx.camera.mouse_focused {
+                            gfx.camera.mouse_focused = false;
+
+                            match window.set_cursor_grab(winit::window::CursorGrabMode::None) {
+                                Ok(()) => {
+                                    window.set_cursor_visible(true);
+                                }
+                                Err(e) => {
+                                    log::error!("{e}");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                _ => {}
+            },
             WindowEvent::Resized(physical_size) => {
                 gfx.resize(physical_size);
             }
             WindowEvent::RedrawRequested => {
                 // Some horrible nesting here! Don't tell Linus...
                 if let Some(ref window) = &self.window {
+                    let now = instant::Instant::now();
+                    let dt = now - self.last_render_time;
+                    self.last_render_time = now;
+
                     window.request_redraw();
-                    match gfx.render(&mut self.egui, window.clone(), &mut self.world) {
+                    match gfx.render(&mut self.egui, window.clone(), &mut self.world, dt) {
                         Ok(_) => {
                             // TODO CITE https://github.com/kaphula/winit-egui-wgpu-template/blob/master/src/app.rs#L3
-                            gfx.update(&mut self.world);
+                            gfx.update(&mut self.world, dt);
                         }
                         Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                             gfx.resize(window.inner_size());

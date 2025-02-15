@@ -1,6 +1,4 @@
 use std::f32::consts::PI;
-
-use crate::gfx::camera::Camera;
 use glam::{vec3, Mat4, Vec3, Vec4};
 
 #[repr(C)]

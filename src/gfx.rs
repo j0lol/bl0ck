@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_3};
 mod camera;
 mod light;
 mod model;
@@ -8,12 +9,14 @@ mod texture;
 use egui::text_selection::text_cursor_state::slice_char_range;
 use egui::Key::A;
 use egui_wgpu::ScreenDescriptor;
-use glam::{vec3, IVec3, Mat4, Quat, Vec3, Vec4, Vec4Swizzles};
+use glam::{uvec2, vec2, vec3, IVec3, Mat4, Quat, Vec3, Vec4, Vec4Swizzles};
 use light::LightUniform;
 use std::ops::Deref;
 use std::{f32::consts::PI, path::Path, sync::Arc};
 use wgpu::util::DeviceExt;
 use wgpu::BindingResource;
+use winit::dpi::PhysicalPosition;
+use winit::keyboard::Key;
 use winit::{
     dpi::PhysicalSize,
     event::{ElementState, KeyEvent, WindowEvent},
@@ -35,8 +38,10 @@ use crate::{
 
 pub struct CameraState {
     pub object: camera::Camera,
+    pub projection: camera::Projection,
     pub controller: camera::CameraController,
     pub uniform: CameraUniform,
+    pub mouse_focused: bool,
 }
 pub struct InteractState {
     pub clear_color: wgpu::Color,
@@ -53,6 +58,7 @@ pub struct ObjectState {
 
 pub struct LightState {
     pub object: camera::Camera,
+    pub projection: camera::Projection,
     pub uniform: CameraUniform,
     pub shadow_map: texture::Texture,
 }
@@ -319,23 +325,24 @@ impl Gfx {
                 label: Some("texture_bind_group_layout"),
             });
 
-        let camera = camera::Camera {
-            eye: vec3(50., 20., 50.),
-            target: Vec3::ZERO,
-            up: Vec3::Y,
-            aspect: surface_config.width as f32 / surface_config.height as f32,
-            fovy: PI / 2.,
-            znear: 0.1,
-            zfar: 1000.0,
-        };
-        let camera_controller = camera::CameraController::new(0.2);
+        let camera = camera::Camera::new(vec3(50., 20., 50.), -std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_3);
+        let projection = camera::Projection::new(
+            uvec2(surface_config.width, surface_config.height).as_vec2(),
+            FRAC_PI_2,
+            0.1,
+            1000.0,
+        );
+        let camera_controller = camera::CameraController::new(40.0, 0.4);
+
         let mut camera_uniform = camera::CameraUniform::new();
-        camera_uniform.update_view_proj(&camera);
+        camera_uniform.update_view_proj(&camera, &projection);
 
         let camera_state = CameraState {
             object: camera,
+            projection,
             controller: camera_controller,
             uniform: camera_uniform,
+            mouse_focused: false,
         };
 
         // MAP LOAD
@@ -361,17 +368,18 @@ impl Gfx {
         .unwrap();
 
         log::info!("Light setup!");
-        let light = camera::Camera {
-            eye: vec3(0., 300., 0.),
-            target: Vec3::ZERO,
-            up: Vec3::Y,
-            aspect: surface_config.width as f32 / surface_config.height as f32,
-            fovy: PI / 2.,
-            znear: 0.1,
-            zfar: 1000.0,
-        };
+        let light = camera::Camera::new(vec3(0., 300., 0.), -90.0, -20.0);
+        let light_projection = camera::Projection::new(
+            uvec2(surface_config.width, surface_config.height).as_vec2(),
+            FRAC_PI_2,
+            0.1,
+            1000.0,
+        );
+
         let mut light_uniform = camera::CameraUniform::new();
-        light_uniform.update_view_proj(&light);
+        light_uniform.update_view_proj(&light, &light_projection);
+
+
 
         let shadow_map = texture::Texture::create_depth_texture(
             &device,
@@ -615,7 +623,7 @@ impl Gfx {
                     a: 1.0,
                 },
                 shadows: true,
-                sun_speed: 0.001,
+                sun_speed: FRAC_PI_3,
             },
             object: ObjectState {
                 model: obj_model,
@@ -625,6 +633,7 @@ impl Gfx {
             },
             light: LightState {
                 object: light,
+                projection: light_projection,
                 uniform: light_uniform,
                 shadow_map,
             },
@@ -638,8 +647,10 @@ impl Gfx {
 
         self.surface_config.width = new_size.width;
         self.surface_config.height = new_size.height;
-        self.camera.object.aspect =
-            self.surface_config.width as f32 / self.surface_config.height as f32;
+        self.camera
+            .projection
+            .resize(uvec2(self.surface_config.width, self.surface_config.height).as_vec2());
+
         self.surface.configure(&self.device, &self.surface_config);
 
         self.depth_texture = texture::Texture::create_depth_texture(
@@ -705,6 +716,7 @@ impl Gfx {
         egui: &mut Option<EguiRenderer>,
         window: Arc<Window>,
         world: &mut World,
+        dt: instant::Duration
     ) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
 
@@ -775,7 +787,7 @@ impl Gfx {
             let Pass {
                 pipeline,
                 bind_group,
-                uniform_bufs,
+                uniform_bufs: _,
             } = &mut self.forward_pass;
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -831,7 +843,7 @@ impl Gfx {
             };
             egui.begin_frame(&window);
 
-            egui.update(self, world);
+            egui.update(self, world, dt);
 
             egui.end_frame_and_draw(
                 &self.device,
@@ -849,13 +861,13 @@ impl Gfx {
         Ok(())
     }
 
-    pub fn update(&mut self, world: &mut World) {
+    pub fn update(&mut self, world: &mut World, dt: instant::Duration) {
         // Camera update
         self.camera
             .controller
-            .update_camera(&mut self.camera.object);
+            .update_camera(&mut self.camera.object, dt);
+        self.camera.uniform.update_view_proj(&self.camera.object, &self.camera.projection);
 
-        self.camera.uniform.update_view_proj(&self.camera.object);
         self.queue.write_buffer(
             &self.forward_pass.uniform_bufs[0],
             0,
@@ -863,9 +875,9 @@ impl Gfx {
         );
 
         // Light update
-        self.light.object.eye = Quat::from_axis_angle(vec3(0.0, 0.0, 1.0), self.interact.sun_speed)
-            * self.light.object.eye;
-        self.light.uniform.update_view_proj(&self.light.object);
+        self.light.object.position = Quat::from_axis_angle(vec3(0.0, 0.0, 1.0), self.interact.sun_speed * dt.as_secs_f32())
+            * self.light.object.position;
+        self.light.uniform.update_view_proj(&self.light.object, &self.light.projection);
 
         self.queue.write_buffer(
             &self.forward_pass.uniform_bufs[1],
@@ -879,9 +891,33 @@ impl Gfx {
         }
     }
 
-    pub fn input(&mut self, event: &WindowEvent, window_size: PhysicalSize<u32>) -> bool {
-        self.camera.controller.process_events(event);
+    pub fn input(&mut self, event: &WindowEvent, _window_size: PhysicalSize<u32>) -> bool {
+        // self.camera.controller.process_events(event);
 
-        false
+        match event {
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(key),
+                        state,
+                        ..
+                    },
+                ..
+            } => self.camera.controller.process_keyboard(*key, *state),
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.camera.controller.process_scroll(delta);
+                true
+            }
+            // WindowEvent::MouseInput {
+            //     button: winit::event::MouseButton::Left,
+            //     state,
+            //     ..
+            // } => {
+            //     self.camera.mouse_pressed = *state == ElementState::Pressed;
+            //     true
+            // }
+
+            _ => false,
+        }
     }
 }
