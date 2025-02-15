@@ -718,8 +718,6 @@ impl Gfx {
                 label: Some("Render Encoder"),
             });
 
-        log::debug!("Hi renderer!");
-
         encoder.push_debug_group("Shadow pass");
         use crate::gfx::model::DrawModel;
 

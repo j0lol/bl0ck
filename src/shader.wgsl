@@ -138,7 +138,8 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) face: bool) -> @location(0) 
     let specular_color = specular_strength * light_color * shadow;
 
 //    let result = (ambient_color + diffuse_color + specular_color) * shadow * object_color.xyz;
-    let result = (ambient_color + diffuse_color + specular_color) * (shadow_guassian * 0.7 + (1.0 - 0.7)) * object_color.xyz;
+    // let result = (ambient_color + diffuse_color + specular_color) * (shadow_guassian * shadow_strength + (1.0 - shadow_strength)) * object_color.xyz;
+    let result = (ambient_color + diffuse_color + specular_color) * (shadow_guassian * shadow_strength + (1.0 - shadow_strength));
 
     return vec4<f32>(result, object_color.a);
 }
