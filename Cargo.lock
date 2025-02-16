@@ -254,6 +254,7 @@ dependencies = [
 name = "bl0ck"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bincode",
  "bytemuck",
  "cfg-if",
@@ -273,6 +274,7 @@ dependencies = [
  "pollster",
  "rand",
  "reqwest",
+ "rollgrid",
  "thiserror 2.0.11",
  "tobj",
  "wasm-bindgen",
@@ -1983,6 +1985,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "panicmsg"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "074c941852b5a59932d7e7caca954d3731c01938fe4aa0f3d2f87d1470aef7ac"
+
+[[package]]
 name = "parking_lot"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2299,6 +2307,15 @@ dependencies = [
  "spin",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rollgrid"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be0228715d4e911eadcd3df048512222f53fc3df6d4fb5e7e989b7b3a89019d5"
+dependencies = [
+ "panicmsg",
 ]
 
 [[package]]

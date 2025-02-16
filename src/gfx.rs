@@ -1,11 +1,11 @@
-use std::borrow::Borrow;
-use std::f32::consts::{FRAC_PI_2, FRAC_PI_3};
 mod camera;
 mod light;
 mod model;
 mod resources;
 mod texture;
 
+use std::borrow::Borrow;
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_3};
 use egui::text_selection::text_cursor_state::slice_char_range;
 use egui::Key::A;
 use egui_wgpu::ScreenDescriptor;
@@ -24,14 +24,14 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::Window,
 };
-
 use crate::gfx::camera::CameraUniform;
 use crate::gfx::model::DrawLight;
+use crate::world::chunk::{sl3get, CHUNK_SIZE};
 use crate::{
     app::WASM_WIN_SIZE,
     gfx::model::Vertex,
     gui::EguiRenderer,
-    world::map::{sl3get, Block, WorldMap, CHUNK_SIZE},
+    world::map::{Block, WorldMap},
     world::World,
     Instance, InstanceRaw,
 };
@@ -347,7 +347,7 @@ impl Gfx {
 
         // MAP LOAD
 
-        let map = crate::world::map::new_map();
+        let map = crate::world::map::new();
 
         let instances = Self::remake_instance_buf(&map);
 
@@ -665,7 +665,7 @@ impl Gfx {
         let mut instances = vec![];
 
         const SPACE_BETWEEN: f32 = 2.0;
-        for (coords, chunk) in &map.chunks {
+        for (coords, chunk) in map.chunks.iter() {
             let _3diter = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2);
 
             let mut i = _3diter
@@ -675,7 +675,7 @@ impl Gfx {
                     }
 
                     let chunk_offset =
-                        IVec3::from(*coords).as_vec3() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
+                        IVec3::from(coords).as_vec3() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
 
                     let mapping = |n| SPACE_BETWEEN * (n as f32 - CHUNK_SIZE.0 as f32 / 2.0);
                     let position = vec3(

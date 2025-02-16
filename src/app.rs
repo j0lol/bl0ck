@@ -1,7 +1,7 @@
 use crate::{
     gfx::{Gfx, GfxBuilder, MaybeGfx},
     gui::EguiRenderer,
-    world::map::new_map,
+    world::map::new,
     world::World,
 };
 use glam::{dvec2, vec2};
@@ -37,7 +37,7 @@ impl Application {
             gfx_state: MaybeGfx::Builder(GfxBuilder::new(event_loop.create_proxy())),
             window: None,
             egui: None,
-            world: World { map: new_map() },
+            world: World { map: new() },
             last_render_time: instant::Instant::now(),
         }
     }

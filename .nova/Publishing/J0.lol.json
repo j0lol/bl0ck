@@ -15,7 +15,9 @@
     "gen",
     "mobile.toml",
     "save.bl0ck",
-    ".gitignore"
+    ".gitignore",
+    "save",
+    "README.md"
   ],
   "remotePath" : "\/var\/www\/vps.j0.lol\/fyptest",
   "server" : "J0.lol",

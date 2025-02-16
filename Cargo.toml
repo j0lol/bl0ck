@@ -24,6 +24,8 @@ egui-wgpu = "0.31"
 egui-winit = { version = "0.31", default-features = false }
 bincode = "2.0.0-RC.3"
 instant = "0.1"
+rollgrid = "3"
+base64 = "0.22.1"
 
 [build-dependencies]
 fs_extra = "1.3"
@@ -46,6 +48,7 @@ web-sys = { version = "0.3", features = [
     "Window",
     "Element",
     "Location",
+    "Storage"
 ] }
 reqwest = "0.12"
 instant = { version = "0.1", features = [ "wasm-bindgen" ] }

@@ -5,8 +5,7 @@ use winit::window::Window;
 
 use crate::{
     gfx::Gfx,
-    world::map::{chunk_scramble_dispatch, ChunkScramble},
-    world::World,
+    world::{chunk::{Chunk, ChunkScramble}, World},
 };
 
 const FPS_AVG_WINDOW: usize = 120;
@@ -263,19 +262,20 @@ impl EguiRenderer {
                 ui.horizontal(|ui| {
                     let pos = ivec3(chunk_x, chunk_y, chunk_z);
 
+                    #[cfg(not(target_arch = "wasm32"))]
                     if ui.button("Random").clicked() {
-                        let c = chunk_scramble_dispatch(ChunkScramble::Random)(pos);
-                        world.map.chunks.insert(pos.into(), c);
+                        let c = Chunk::generate(pos, ChunkScramble::Random);
+                        world.map.chunks.set(pos.into(), c);
                         gfx.object.remake = true;
                     }
                     if ui.button("Normal").clicked() {
-                        let c = chunk_scramble_dispatch(ChunkScramble::Normal)(pos);
-                        world.map.chunks.insert(pos.into(), c);
+                        let c = Chunk::generate(pos, ChunkScramble::Normal);
+                        world.map.chunks.set(pos.into(), c);
                         gfx.object.remake = true;
                     }
                     if ui.button("Inverse").clicked() {
-                        let c = chunk_scramble_dispatch(ChunkScramble::Inverse)(pos);
-                        world.map.chunks.insert(pos.into(), c);
+                        let c = Chunk::generate(pos, ChunkScramble::Inverse);
+                        world.map.chunks.set(pos.into(), c);
                         gfx.object.remake = true;
                     }
                 });
@@ -285,10 +285,6 @@ impl EguiRenderer {
                 ui.horizontal(|ui| {
                     if ui.button("Save").clicked() {
                         world.save().unwrap();
-                    }
-                    if ui.button("Load").clicked() {
-                        *world = World::load().unwrap();
-                        gfx.object.remake = true;
                     }
                 });
             });
