@@ -10,6 +10,7 @@ use glam::{Mat3, Quat, Vec3};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::UnwrapThrowExt;
 use winit::event_loop::EventLoop;
+use world::chunk::preload_chunk_cache;
 
 struct Instance {
     position: Vec3,
@@ -97,6 +98,7 @@ pub async fn run() {
     init_logger();
 
     log::info!("Hello world!");
+    preload_chunk_cache();
     let event_loop = EventLoop::with_user_event().build().unwrap_throw();
 
     let mut app = app::Application::new(&event_loop, "BL0CK");

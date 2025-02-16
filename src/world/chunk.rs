@@ -1,16 +1,21 @@
-use std::{
-    fs::File,
-    hash::{DefaultHasher, Hash, Hasher},
-    path::Path,
-};
-
+use super::map::Block;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use bincode::{Decode, Encode};
 use glam::{ivec3, IVec3};
 use itertools::Itertools;
+use std::sync::Mutex;
+use std::{
+    collections::HashMap,
+    fs::File,
+    hash::{DefaultHasher, Hash, Hasher},
+    path::Path,
+    sync::LazyLock,
+};
 
-use super::map::Block;
+#[cfg(not(target_arch = "wasm32"))]
+static CHUNK_FILE_CACHE: LazyLock<Mutex<HashMap<IVec3, Chunk>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 // I have arbitrarily decided that this is (x,z,y) where +y is up.
 pub(crate) const CHUNK_SIZE: (usize, usize, usize) = (16, 16, 16);
@@ -153,13 +158,30 @@ impl Chunk {
     }
 
     pub fn load(map_pos: IVec3) -> Result<Chunk, Box<dyn std::error::Error>> {
-        match Chunk::load_from_file(map_pos)? {
-            Some(chunk) => Ok(chunk),
-            None => {
-                let new_chunk = Chunk::generate(map_pos, ChunkScramble::Normal);
-                new_chunk.save(map_pos)?;
-                Ok(new_chunk)
-            }
+        #[cfg(not(target_arch = "wasm32"))]
+        let cached = CHUNK_FILE_CACHE.lock().unwrap().contains_key(&map_pos);
+        #[cfg(target_arch = "wasm32")]
+        let cached = false;
+
+        if cached {
+            log::warn!("Cache hit!");
+            #[cfg(not(target_arch = "wasm32"))]
+            return Ok(CHUNK_FILE_CACHE.lock().unwrap()[&map_pos]);
+            #[cfg(target_arch = "wasm32")]
+            return unreachable!();
+        } else {
+            log::warn!("Cache miss!");
+            let chunk = match Chunk::load_from_file(map_pos)? {
+                Some(chunk) => chunk,
+                None => {
+                    let new_chunk = Chunk::generate(map_pos, ChunkScramble::Normal);
+                    new_chunk.save(map_pos)?;
+                    new_chunk
+                }
+            };
+            #[cfg(not(target_arch = "wasm32"))]
+            CHUNK_FILE_CACHE.lock().unwrap().insert(map_pos, chunk);
+            Ok(chunk)
         }
     }
 }
@@ -169,4 +191,20 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
     t.hash(&mut s);
     s.finish()
+}
+
+pub fn preload_chunk_cache() {
+    #[cfg(target_arch = "wasm32")]
+    return;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // range
+        let r: i32 = 8;
+        let _3diter = itertools::iproduct!(-r..r, -r..r, -r..r);
+
+        for (x, y, z) in _3diter {
+            let _ = Chunk::load(ivec3(x, y, z));
+        }
+    }
 }

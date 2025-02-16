@@ -3,5 +3,8 @@
     "identifier" : "com.kilb.rust",
     "name" : "Rust"
   },
-  "extensionTemplate" : "cargo"
+  "extensionTemplate" : "cargo",
+  "extensionValues" : {
+
+  }
 }

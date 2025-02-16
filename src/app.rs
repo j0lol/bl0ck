@@ -11,7 +11,7 @@ use winit::{
     event::{DeviceEvent, DeviceId, ElementState, KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowAttributes, WindowId},
+    window::{Fullscreen, Window, WindowAttributes, WindowId},
 };
 
 pub(crate) const WASM_WIN_SIZE: (u32, u32) = (640 * 2, 480 * 2);
@@ -85,9 +85,9 @@ impl ApplicationHandler<Gfx> for Application {
             (&mut self.gfx_state, event)
         {
             if gfx.camera.mouse_focused {
-            gfx.camera
-                .controller
-                .process_mouse(dvec2(delta.0, delta.1).as_vec2())
+                gfx.camera
+                    .controller
+                    .process_mouse(dvec2(delta.0, delta.1).as_vec2())
             }
         }
     }
@@ -177,6 +177,21 @@ impl ApplicationHandler<Gfx> for Application {
                     }
                 }
 
+                KeyEvent {
+                    state: ElementState::Pressed,
+                    physical_key: PhysicalKey::Code(KeyCode::KeyF),
+                    ..
+                } => {
+                    if let Some(ref window) = &self.window {
+                        let fullscreen = if window.fullscreen().is_some() {
+                            None
+                        } else {
+                            Some(Fullscreen::Borderless(None))
+                        };
+
+                        window.set_fullscreen(fullscreen);
+                    }
+                }
                 _ => {}
             },
             WindowEvent::Resized(physical_size) => {

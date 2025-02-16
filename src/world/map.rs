@@ -36,7 +36,7 @@ pub fn new() -> WorldMap {
         chunks: RollGrid3D::new(
             (
                 INITIAL_GENERATION_SIZE as _,
-                2,
+                INITIAL_GENERATION_SIZE as _,
                 INITIAL_GENERATION_SIZE as _,
             ),
             (0, 0, 0),

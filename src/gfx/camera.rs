@@ -1,6 +1,7 @@
-use glam::{vec3, vec4, Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
+use glam::{ivec3, vec3, vec4, IVec3, Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
 use instant::Duration;
 use itertools::Itertools;
+use rollgrid::math::Convert;
 use std::f32::consts::FRAC_2_PI;
 use winit::{
     dpi::PhysicalPosition,
@@ -9,42 +10,46 @@ use winit::{
     keyboard::PhysicalKey,
 };
 
-const MAX_CAMERA_PITCH: f32 = (3.0/std::f32::consts::PI) - 0.0001;
+use crate::world::{chunk::Chunk, World};
+
+use super::Gfx;
+
+const MAX_CAMERA_PITCH: f32 = (3.0 / std::f32::consts::PI) - 0.0001;
 
 type Rad = f32;
 type Distance = f32;
 
 #[derive(Default, Debug)]
 pub struct AxisInput {
-   x: bool,
-   x_neg: bool,
-   y: bool,
-   y_neg: bool,
-   z: bool,
-   z_neg: bool,
+    x: bool,
+    x_neg: bool,
+    y: bool,
+    y_neg: bool,
+    z: bool,
+    z_neg: bool,
 }
 
 impl AxisInput {
-   pub fn vec3(&self) -> Vec3 {
-      let x = match (self.x, self.x_neg) {
-         (true, false) => 1.0,
-         (false, true) => -1.0,
-         _ => 0.0
-      };
+    pub fn vec3(&self) -> Vec3 {
+        let x = match (self.x, self.x_neg) {
+            (true, false) => 1.0,
+            (false, true) => -1.0,
+            _ => 0.0,
+        };
 
-      let y = match (self.y, self.y_neg) {
-         (true, false) => 1.0,
-         (false, true) => -1.0,
-         _ => 0.0
-      };
+        let y = match (self.y, self.y_neg) {
+            (true, false) => 1.0,
+            (false, true) => -1.0,
+            _ => 0.0,
+        };
 
-      let z = match (self.z, self.z_neg) {
-         (true, false) => 1.0,
-         (false, true) => -1.0,
-         _ => 0.0
-      };
-      vec3(x,y,z)
-   }
+        let z = match (self.z, self.z_neg) {
+            (true, false) => 1.0,
+            (false, true) => -1.0,
+            _ => 0.0,
+        };
+        vec3(x, y, z)
+    }
 }
 
 pub struct Camera {
@@ -106,6 +111,7 @@ pub struct CameraController {
     scroll: f32,
     pub(crate) speed: f32,
     sensitivity: f32,
+    pub(crate) load_chunks: bool,
 }
 
 impl CameraController {
@@ -116,6 +122,7 @@ impl CameraController {
             scroll: 0.,
             speed,
             sensitivity,
+            load_chunks: true,
         }
     }
 
@@ -155,7 +162,13 @@ impl CameraController {
         };
     }
 
-    pub fn update_camera(&mut self, camera: &mut Camera, duration: Duration) {
+    pub fn update_camera(
+        &mut self,
+        camera: &mut Camera,
+        duration: Duration,
+        world: &mut World,
+        remake: &mut bool,
+    ) {
         let dt = duration.as_secs_f32();
         let movement = self.movement.vec3();
 
@@ -176,6 +189,24 @@ impl CameraController {
 
         camera.yaw += self.rotation.x * self.sensitivity * dt;
         camera.pitch += -self.rotation.y * self.sensitivity * dt;
+
+        if self.load_chunks {
+            const BLOCK_UNIT_SIZE: i32 = 32;
+            let chunk_relative = IVec3::from(
+                (camera.position.x as i32 / BLOCK_UNIT_SIZE,
+                -(camera.position.y as i32 / BLOCK_UNIT_SIZE),
+                camera.position.z as i32 / BLOCK_UNIT_SIZE,
+            )) + IVec3::splat(-2);
+            if chunk_relative != world.map.chunks.offset().into() {
+                world
+                    .map
+                    .chunks
+                    .reposition((IVec3::from(chunk_relative)).into(), |_old, new, chunk| {
+                        *chunk = Chunk::load(ivec3(new.0, new.1, new.2)).unwrap();
+                    });
+                *remake = true;
+            }
+        }
 
         self.rotation = Vec2::ZERO;
 

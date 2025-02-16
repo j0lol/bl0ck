@@ -865,7 +865,7 @@ impl Gfx {
         // Camera update
         self.camera
             .controller
-            .update_camera(&mut self.camera.object, dt);
+            .update_camera(&mut self.camera.object, dt, world, &mut self.object.remake);
         self.camera.uniform.update_view_proj(&self.camera.object, &self.camera.projection);
 
         self.queue.write_buffer(
@@ -892,8 +892,6 @@ impl Gfx {
     }
 
     pub fn input(&mut self, event: &WindowEvent, _window_size: PhysicalSize<u32>) -> bool {
-        // self.camera.controller.process_events(event);
-
         match event {
             WindowEvent::KeyboardInput {
                 event:
@@ -908,15 +906,6 @@ impl Gfx {
                 self.camera.controller.process_scroll(delta);
                 true
             }
-            // WindowEvent::MouseInput {
-            //     button: winit::event::MouseButton::Left,
-            //     state,
-            //     ..
-            // } => {
-            //     self.camera.mouse_pressed = *state == ElementState::Pressed;
-            //     true
-            // }
-
             _ => false,
         }
     }

@@ -5,7 +5,10 @@ use winit::window::Window;
 
 use crate::{
     gfx::Gfx,
-    world::{chunk::{Chunk, ChunkScramble}, World},
+    world::{
+        chunk::{Chunk, ChunkScramble},
+        World,
+    },
 };
 
 const FPS_AVG_WINDOW: usize = 120;
@@ -63,7 +66,7 @@ impl EguiRenderer {
             scale_factor: 1.0,
             chunk_influence: (0, 0, 0),
             frame_count: 0,
-            fps_average: [0.; FPS_AVG_WINDOW]
+            fps_average: [0.; FPS_AVG_WINDOW],
         }
     }
 
@@ -144,16 +147,15 @@ impl EguiRenderer {
     }
 
     pub fn update(&mut self, gfx: &mut Gfx, world: &mut World, dt: instant::Duration) {
-
         let mut scale_factor = self.scale_factor;
         let (mut chunk_x, mut chunk_y, mut chunk_z) = self.chunk_influence;
-
+        let (mut grid_x, mut grid_y, mut grid_z) = world.map.chunks.offset();
+        let mut camera_load = gfx.camera.controller.load_chunks;
 
         let dt = dt.as_secs_f32();
         self.frame_count += 1;
         self.fps_average[(self.frame_count % FPS_AVG_WINDOW as u64) as usize] = 1.0_f64 / dt as f64;
         let mean = self.fps_average.iter().sum::<f64>() / FPS_AVG_WINDOW as f64;
-
 
         let ctx = self.ctx();
         egui::Window::new("Debug Menu")
@@ -162,17 +164,28 @@ impl EguiRenderer {
             .default_open(false)
             .show(ctx, |ui| {
                 ui.heading("Performance debugging stats...");
-                ui.label(format!("FPS: {:.1} (smoothed over an interval of {})", mean, FPS_AVG_WINDOW));
+                ui.label(format!(
+                    "FPS: {:.1} (smoothed over an interval of {})",
+                    mean, FPS_AVG_WINDOW
+                ));
                 ui.label(format!("FPS: {:.1} (jittery)", 1.0 / dt));
                 ui.label(format!("Instances: {:?}", gfx.object.instances.len()));
-                ui.label(format!("Vertices (guess): {:?}", gfx.object.instances.len() as u32 * gfx.object.model.meshes.iter().map(|x| x.num_elements).sum::<u32>()));
-
+                ui.label(format!(
+                    "Vertices (guess): {:?}",
+                    gfx.object.instances.len() as u32
+                        * gfx
+                            .object
+                            .model
+                            .meshes
+                            .iter()
+                            .map(|x| x.num_elements)
+                            .sum::<u32>()
+                ));
 
                 ui.separator();
 
                 ui.heading("Debugging toys...");
                 ui.horizontal(|ui| {
-
                     ui.label("Draw Color");
 
                     // Absolutely disgusting code!
@@ -196,40 +209,28 @@ impl EguiRenderer {
 
                 ui.add(
                     egui::Slider::new(&mut gfx.camera.controller.speed, 0.1..=1000.0)
-                        .text("Cam Speed").logarithmic(true),
+                        .text("Cam Speed")
+                        .logarithmic(true),
                 );
 
                 ui.separator();
 
-                ui.label(format!(
-                    "Camera input \"bitfield\":"
-                ));
-                ui.label(RichText::new(format!(
-                    "{:?}",
-                    gfx.camera.controller.movement
-                )).font(FontId::monospace(11.0)));
+                ui.label(format!("Camera input \"bitfield\":"));
+                ui.label(
+                    RichText::new(format!("{:?}", gfx.camera.controller.movement))
+                        .font(FontId::monospace(11.0)),
+                );
                 ui.label(format!(
                     "... which is a movement vector of: {:?}",
                     gfx.camera.controller.movement.vec3()
                 ));
-                // ui.add(
-                //     egui::Slider::new(&mut gfx.camera.object.position.x, -500.0..=500.0).text("Cam X"),
-                // );
-                // ui.add(
-                //     egui::Slider::new(&mut gfx.camera.object.position.y, -500.0..=500.0).text("Cam Y"),
-                // );
-                // ui.add(
-                //     egui::Slider::new(&mut gfx.camera.object.position.z, -500.0..=500.0).text("Cam Z"),
-                // );
+
                 ui.separator();
 
-                // ui.checkbox(
-                //     &mut gfx.interact.shadows,
-                //     "Light shadowing (via shadow-maps)",
-                // );
-
                 ui.add(
-                    egui::Slider::new(&mut gfx.interact.sun_speed, 0.1..=100.0).text("Sun rotational speed (radians per second)").logarithmic(true),
+                    egui::Slider::new(&mut gfx.interact.sun_speed, 0.1..=100.0)
+                        .text("Sun rotational speed (radians per second)")
+                        .logarithmic(true),
                 );
 
                 ui.separator();
@@ -247,6 +248,20 @@ impl EguiRenderer {
 
                 ui.heading("World toys...");
 
+                ui.checkbox(&mut camera_load, "Camera position loads chunks");
+                ui.label("Move chunk window... ");
+                ui.horizontal(|ui| {
+                    ui.add_enabled(!camera_load, egui::DragValue::new(&mut grid_x).speed(0.1).update_while_editing(false));
+                    ui.label("x ");
+
+                    ui.add_enabled(!camera_load, egui::DragValue::new(&mut grid_y).speed(0.1).update_while_editing(false));
+                    ui.label("y ");
+
+                    ui.add_enabled(!camera_load, egui::DragValue::new(&mut grid_z).speed(0.1).update_while_editing(false));
+                    ui.label("z.");
+                });
+
+                ui.separator();
                 ui.horizontal(|ui| {
                     ui.label("Scramble chunk at...");
                     ui.add(egui::DragValue::new(&mut chunk_x).speed(0.1));
@@ -291,5 +306,21 @@ impl EguiRenderer {
 
         self.scale_factor = scale_factor;
         self.chunk_influence = (chunk_x, chunk_y, chunk_z);
+
+        gfx.camera.controller.load_chunks = camera_load;
+
+        if !camera_load {
+            if (grid_x, grid_y, grid_z) != world.map.chunks.offset() {
+                world
+                    .map
+                    .chunks
+                    .reposition((grid_x, grid_y, grid_z), |_old, new, chunk| {
+                        *chunk = Chunk::load(ivec3(new.0, new.1, new.2)).unwrap();
+                    });
+                gfx.object.remake = true;
+            }
+        }
+
+
     }
 }
