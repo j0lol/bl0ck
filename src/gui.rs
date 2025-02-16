@@ -9,12 +9,15 @@ use crate::{
     world::World,
 };
 
+const FPS_AVG_WINDOW: usize = 120;
 pub struct EguiRenderer {
     state: egui_winit::State,
     renderer: egui_wgpu::Renderer,
     frame_started: bool,
     pub scale_factor: f32,
     pub chunk_influence: (i32, i32, i32),
+    pub frame_count: u64,
+    pub fps_average: [f64; FPS_AVG_WINDOW],
 }
 
 impl EguiRenderer {
@@ -60,6 +63,8 @@ impl EguiRenderer {
             frame_started: false,
             scale_factor: 1.0,
             chunk_influence: (0, 0, 0),
+            frame_count: 0,
+            fps_average: [0.; FPS_AVG_WINDOW]
         }
     }
 
@@ -140,18 +145,35 @@ impl EguiRenderer {
     }
 
     pub fn update(&mut self, gfx: &mut Gfx, world: &mut World, dt: instant::Duration) {
-        let ctx = self.ctx();
 
         let mut scale_factor = self.scale_factor;
         let (mut chunk_x, mut chunk_y, mut chunk_z) = self.chunk_influence;
 
+
+        let dt = dt.as_secs_f32();
+        self.frame_count += 1;
+        self.fps_average[(self.frame_count % FPS_AVG_WINDOW as u64) as usize] = 1.0_f64 / dt as f64;
+        let mean = self.fps_average.iter().sum::<f64>() / FPS_AVG_WINDOW as f64;
+
+
+        let ctx = self.ctx();
         egui::Window::new("Debug Menu")
             .resizable(true)
             .vscroll(true)
             .default_open(false)
             .show(ctx, |ui| {
+                ui.heading("Performance debugging stats...");
+                ui.label(format!("FPS: {:.1} (smoothed over an interval of {})", mean, FPS_AVG_WINDOW));
+                ui.label(format!("FPS: {:.1} (jittery)", 1.0 / dt));
+                ui.label(format!("Instances: {:?}", gfx.object.instances.len()));
+                ui.label(format!("Vertices (guess): {:?}", gfx.object.instances.len() as u32 * gfx.object.model.meshes.iter().map(|x| x.num_elements).sum::<u32>()));
+
+
+                ui.separator();
+
+                ui.heading("Debugging toys...");
                 ui.horizontal(|ui| {
-                    ui.label(format!("FPS: {}", 1.0 / dt.as_secs_f32()));
+
                     ui.label("Draw Color");
 
                     // Absolutely disgusting code!
@@ -223,6 +245,8 @@ impl EguiRenderer {
                 });
 
                 ui.separator();
+
+                ui.heading("World toys...");
 
                 ui.horizontal(|ui| {
                     ui.label("Scramble chunk at...");
