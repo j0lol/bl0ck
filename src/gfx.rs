@@ -4,36 +4,29 @@ mod model;
 mod resources;
 mod texture;
 
-use std::borrow::Borrow;
-use std::f32::consts::{FRAC_PI_2, FRAC_PI_3};
-use egui::text_selection::text_cursor_state::slice_char_range;
-use egui::Key::A;
-use egui_wgpu::ScreenDescriptor;
-use glam::{uvec2, vec2, vec3, IVec3, Mat4, Quat, Vec3, Vec4, Vec4Swizzles};
-use light::LightUniform;
-use std::ops::Deref;
-use std::{f32::consts::PI, path::Path, sync::Arc};
-use wgpu::util::DeviceExt;
-use wgpu::BindingResource;
-use winit::dpi::PhysicalPosition;
-use winit::keyboard::Key;
-use winit::{
-    dpi::PhysicalSize,
-    event::{ElementState, KeyEvent, WindowEvent},
-    event_loop::EventLoopProxy,
-    keyboard::{KeyCode, PhysicalKey},
-    window::Window,
-};
 use crate::gfx::camera::CameraUniform;
 use crate::gfx::model::DrawLight;
-use crate::world::chunk::{sl3get, CHUNK_SIZE};
+use crate::world::chunk::{sl3get, sl3get_opt, CHUNK_SIZE};
 use crate::{
     app::WASM_WIN_SIZE,
     gfx::model::Vertex,
     gui::EguiRenderer,
-    world::map::{Block, WorldMap},
+    world::map::{BlockKind, WorldMap},
     world::World,
     Instance, InstanceRaw,
+};
+use egui_wgpu::ScreenDescriptor;
+use glam::{uvec2, vec3, IVec3, Quat, Vec3};
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_3};
+use std::sync::Arc;
+use wgpu::util::DeviceExt;
+use wgpu::BindingResource;
+use winit::{
+    dpi::PhysicalSize,
+    event::{KeyEvent, WindowEvent},
+    event_loop::EventLoopProxy,
+    keyboard::PhysicalKey,
+    window::Window,
 };
 
 pub struct CameraState {
@@ -325,7 +318,11 @@ impl Gfx {
                 label: Some("texture_bind_group_layout"),
             });
 
-        let camera = camera::Camera::new(vec3(50., 20., 50.), -std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_3);
+        let camera = camera::Camera::new(
+            vec3(50., 20., 50.),
+            -std::f32::consts::FRAC_PI_2,
+            std::f32::consts::FRAC_PI_3,
+        );
         let projection = camera::Projection::new(
             uvec2(surface_config.width, surface_config.height).as_vec2(),
             FRAC_PI_2,
@@ -378,8 +375,6 @@ impl Gfx {
 
         let mut light_uniform = camera::CameraUniform::new();
         light_uniform.update_view_proj(&light, &light_projection);
-
-
 
         let shadow_map = texture::Texture::create_depth_texture(
             &device,
@@ -670,7 +665,50 @@ impl Gfx {
 
             let mut i = _3diter
                 .filter_map(|(x, y, z)| {
-                    if let Block::Air = sl3get(&chunk.blocks, x, y, z) {
+                    if let BlockKind::Air = sl3get(&chunk.blocks, x, y, z) {
+                        return None;
+                    }
+
+                    // lookup if node is surrounded by nodes
+                    let mut do_not_occlude = false;
+                    let mut sum = vec![];
+
+                    for (x_, y_, z_) in [
+                        (-1_i32, 0_i32, 0_i32),
+                        (1, 0, 0),
+                        (0, -1, 0),
+                        (0, 1, 0),
+                        (0, 0, -1),
+                        (0, 0, 1),
+                    ] {
+                        if x == 0
+                            || y == 0
+                            || z == 0
+                            || x == CHUNK_SIZE.0 - 1
+                            || y == CHUNK_SIZE.2 - 1
+                            || z == CHUNK_SIZE.1 - 1
+                        {
+                            do_not_occlude = true;
+                            break;
+                        }
+
+                        let (x, y, z) = (x as i32 + x_, y as i32 + y_, z as i32 + z_);
+                        if x < 0 || y < 0 || z < 0
+                        // || x == CHUNK_SIZE.0 as i32 - 1
+                        // || y == CHUNK_SIZE.2 as i32 - 1
+                        // || z == CHUNK_SIZE.1 as i32 - 1
+                        {
+                            continue;
+                        }
+
+                        if let Some(block) =
+                            sl3get_opt(&chunk.blocks, x as usize, y as usize, z as usize)
+                        {
+                            sum.push(block)
+                        }
+                    }
+
+                    if !do_not_occlude && sum.iter().all(|b| *b == BlockKind::Brick) {
                         return None;
                     }
 
@@ -680,7 +718,7 @@ impl Gfx {
                     let mapping = |n| SPACE_BETWEEN * (n as f32 - CHUNK_SIZE.0 as f32 / 2.0);
                     let position = vec3(
                         mapping(x) + chunk_offset.x,
-                        -(mapping(y) + chunk_offset.y),
+                        (mapping(y) + chunk_offset.y),
                         mapping(z) + chunk_offset.z,
                     );
 
@@ -691,6 +729,14 @@ impl Gfx {
                 .collect::<Vec<_>>();
 
             instances.append(&mut i);
+        }
+
+        // WGPU Crashes with an empty instance buffer, add a small item out of camera vfar
+        if instances.is_empty() {
+            instances.push(Instance {
+                position: Vec3::splat(9999.),
+                rotation: Quat::from_axis_angle(Vec3::Y, 0.0),
+            })
         }
         instances
     }
@@ -716,7 +762,7 @@ impl Gfx {
         egui: &mut Option<EguiRenderer>,
         window: Arc<Window>,
         world: &mut World,
-        dt: instant::Duration
+        dt: instant::Duration,
     ) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
 
@@ -863,10 +909,15 @@ impl Gfx {
 
     pub fn update(&mut self, world: &mut World, dt: instant::Duration) {
         // Camera update
+        self.camera.controller.update_camera(
+            &mut self.camera.object,
+            dt,
+            world,
+            &mut self.object.remake,
+        );
         self.camera
-            .controller
-            .update_camera(&mut self.camera.object, dt, world, &mut self.object.remake);
-        self.camera.uniform.update_view_proj(&self.camera.object, &self.camera.projection);
+            .uniform
+            .update_view_proj(&self.camera.object, &self.camera.projection);
 
         self.queue.write_buffer(
             &self.forward_pass.uniform_bufs[0],
@@ -875,9 +926,13 @@ impl Gfx {
         );
 
         // Light update
-        self.light.object.position = Quat::from_axis_angle(vec3(0.0, 0.0, 1.0), self.interact.sun_speed * dt.as_secs_f32())
-            * self.light.object.position;
-        self.light.uniform.update_view_proj(&self.light.object, &self.light.projection);
+        self.light.object.position = Quat::from_axis_angle(
+            vec3(0.0, 0.0, 1.0),
+            self.interact.sun_speed * dt.as_secs_f32(),
+        ) * self.light.object.position;
+        self.light
+            .uniform
+            .update_view_proj(&self.light.object, &self.light.projection);
 
         self.queue.write_buffer(
             &self.forward_pass.uniform_bufs[1],

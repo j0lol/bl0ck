@@ -4,7 +4,7 @@ use crate::{
     world::map::new,
     world::World,
 };
-use glam::{dvec2, vec2};
+use glam::dvec2;
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,

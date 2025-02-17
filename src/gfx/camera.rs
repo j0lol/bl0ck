@@ -1,18 +1,14 @@
-use glam::{ivec3, vec3, vec4, IVec3, Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
+use glam::{ivec3, vec3, IVec3, Mat4, Vec2, Vec3, Vec4};
 use instant::Duration;
 use itertools::Itertools;
-use rollgrid::math::Convert;
-use std::f32::consts::FRAC_2_PI;
 use winit::{
     dpi::PhysicalPosition,
-    event::{ElementState, KeyEvent, MouseScrollDelta, WindowEvent},
+    event::{ElementState, MouseScrollDelta},
     keyboard::KeyCode,
-    keyboard::PhysicalKey,
 };
 
-use crate::world::{chunk::Chunk, World};
+use crate::world::{chunk::Chunk, map::RENDER_GRID_SIZE, World};
 
-use super::Gfx;
 
 const MAX_CAMERA_PITCH: f32 = (3.0 / std::f32::consts::PI) - 0.0001;
 
@@ -194,9 +190,9 @@ impl CameraController {
             const BLOCK_UNIT_SIZE: i32 = 32;
             let chunk_relative = IVec3::from(
                 (camera.position.x as i32 / BLOCK_UNIT_SIZE,
-                -(camera.position.y as i32 / BLOCK_UNIT_SIZE),
+                camera.position.y as i32 / BLOCK_UNIT_SIZE,
                 camera.position.z as i32 / BLOCK_UNIT_SIZE,
-            )) + IVec3::splat(-2);
+            )) + IVec3::splat(-(RENDER_GRID_SIZE as i32/2));
             if chunk_relative != world.map.chunks.offset().into() {
                 world
                     .map

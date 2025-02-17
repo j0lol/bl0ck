@@ -36,7 +36,7 @@ struct InstanceRaw {
 
 impl InstanceRaw {
     fn desc() -> wgpu::VertexBufferLayout<'static> {
-        use std::mem;
+
 
         wgpu::VertexBufferLayout {
             array_stride: size_of::<InstanceRaw>() as wgpu::BufferAddress,
@@ -102,6 +102,5 @@ pub async fn run() {
     let event_loop = EventLoop::with_user_event().build().unwrap_throw();
 
     let mut app = app::Application::new(&event_loop, "BL0CK");
-    // let mut app = DebugWinitApp::new();
     event_loop.run_app(&mut app).unwrap();
 }

@@ -1,5 +1,5 @@
 use std::f32::consts::PI;
-use glam::{vec3, Mat4, Vec3, Vec4};
+use glam::{vec3, Mat4, Vec3};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]

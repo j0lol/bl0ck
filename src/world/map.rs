@@ -1,3 +1,4 @@
+use super::chunk::Chunk;
 use bincode::{Decode, Encode};
 use glam::ivec3;
 #[cfg(not(target_arch = "wasm32"))]
@@ -6,22 +7,24 @@ use rand::{
     Rng,
 };
 use rollgrid::rollgrid3d::RollGrid3D;
-use super::chunk::Chunk;
 
-#[derive(Copy, Clone, Default, Encode, Decode)]
+#[derive(Copy, Clone, Default, Encode, Decode, PartialEq)]
 #[repr(u32)]
-pub enum Block {
+pub enum BlockKind {
     #[default]
     Air = 0,
     Brick,
 }
+pub struct Block {
+    kind: BlockKind,
+}
 
 #[cfg(not(target_arch = "wasm32"))]
-impl Distribution<Block> for StandardUniform {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
+impl Distribution<BlockKind> for StandardUniform {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockKind {
         match rng.random_range(0..=1) {
-            0 => Block::Air,
-            _ => Block::Brick,
+            0 => BlockKind::Air,
+            _ => BlockKind::Brick,
         }
     }
 }
@@ -29,22 +32,17 @@ impl Distribution<Block> for StandardUniform {
 pub struct WorldMap {
     pub chunks: RollGrid3D<Chunk>,
 }
+pub(crate) const RENDER_GRID_SIZE: usize = 15;
 pub fn new() -> WorldMap {
-    const INITIAL_GENERATION_SIZE: usize = 5;
-
     WorldMap {
         chunks: RollGrid3D::new(
             (
-                INITIAL_GENERATION_SIZE as _,
-                INITIAL_GENERATION_SIZE as _,
-                INITIAL_GENERATION_SIZE as _,
+                RENDER_GRID_SIZE as _,
+                RENDER_GRID_SIZE as _,
+                RENDER_GRID_SIZE as _,
             ),
             (0, 0, 0),
             |(x, y, z)| Chunk::load(ivec3(x, y, z)).unwrap(),
         ),
     }
 }
-
-
-
-

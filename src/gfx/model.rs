@@ -1,6 +1,5 @@
 use super::texture;
 use std::ops::Range;
-use wasm_bindgen::__rt::__wbindgen_exn_store;
 
 pub trait Vertex {
     fn desc() -> wgpu::VertexBufferLayout<'static>;

@@ -1,6 +1,6 @@
-use egui::{FontFamily, FontId, RichText};
+use egui::{FontId, RichText};
 use egui_winit::EventResponse;
-use glam::{ivec2, ivec3, IVec2};
+use glam::ivec3;
 use winit::window::Window;
 
 use crate::{

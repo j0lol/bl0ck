@@ -1,6 +1,4 @@
-use super::map::Block;
-use base64::prelude::BASE64_STANDARD;
-use base64::Engine;
+use super::map::BlockKind;
 use bincode::{Decode, Encode};
 use glam::{ivec3, IVec3};
 use itertools::Itertools;
@@ -21,12 +19,15 @@ static CHUNK_FILE_CACHE: LazyLock<Mutex<HashMap<IVec3, Chunk>>> =
 pub(crate) const CHUNK_SIZE: (usize, usize, usize) = (16, 16, 16);
 
 // A [Block; X*Y*Z] would be a much more efficient datatype, but, well...
-pub type Slice3 = [Block; CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2];
+pub type Slice3 = [BlockKind; CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2];
 
-pub fn sl3get(sl3: &Slice3, x: usize, y: usize, z: usize) -> Block {
+pub fn sl3get(sl3: &Slice3, x: usize, y: usize, z: usize) -> BlockKind {
     sl3[y + CHUNK_SIZE.2 * (z + CHUNK_SIZE.1 * x)]
 }
-pub fn sl3set(sl3: &mut Slice3, x: usize, y: usize, z: usize, new: Block) {
+pub fn sl3get_opt(sl3: &Slice3, x: usize, y: usize, z: usize) -> Option<BlockKind> {
+    sl3.get(y + CHUNK_SIZE.2 * (z + CHUNK_SIZE.1 * x)).copied()
+}
+pub fn sl3set(sl3: &mut Slice3, x: usize, y: usize, z: usize, new: BlockKind) {
     sl3[y + CHUNK_SIZE.2 * (z + CHUNK_SIZE.1 * x)] = new;
 }
 
@@ -53,12 +54,12 @@ impl Chunk {
 
                 // Pretty arbitrary numbers! Just trying to get something interesting
                 let n = (((sines / 4. + 0.5) * CHUNK_SIZE.2 as f32).round() as i32)
-                    <= tile_pos_worldspace.y as _;
+                    <= -tile_pos_worldspace.y as _;
 
                 if n {
-                    Block::Brick
+                    BlockKind::Brick
                 } else {
-                    Block::Air
+                    BlockKind::Air
                 }
             })
             .collect_array()
@@ -76,8 +77,8 @@ impl Chunk {
                     .blocks
                     .iter()
                     .map(|b| match b {
-                        Block::Air => Block::Brick,
-                        Block::Brick => Block::Air,
+                        BlockKind::Air => BlockKind::Brick,
+                        BlockKind::Brick => BlockKind::Air,
                     })
                     .collect_array()
                     .unwrap(),
@@ -115,6 +116,7 @@ impl Chunk {
         // We are going to use LocalStorage for web. I don't like it either.
         #[cfg(target_arch = "wasm32")]
         {
+            use base64::prelude::{BASE64_STANDARD, Engine};
             let encoded = bincode::encode_to_vec(self, config)?;
             let encoded = BASE64_STANDARD.encode(encoded);
 
@@ -145,6 +147,7 @@ impl Chunk {
         }
         #[cfg(target_arch = "wasm32")]
         {
+            use base64::prelude::{BASE64_STANDARD, Engine};
             let store = web_sys::window().unwrap().local_storage().unwrap().unwrap();
             if let Ok(Some(s)) = store.get(&file_name) {
                 let s = BASE64_STANDARD.decode(s)?;
@@ -200,7 +203,7 @@ pub fn preload_chunk_cache() {
     #[cfg(not(target_arch = "wasm32"))]
     {
         // range
-        let r: i32 = 8;
+        let r: i32 = 8; // normally 8 or so
         let _3diter = itertools::iproduct!(-r..r, -r..r, -r..r);
 
         for (x, y, z) in _3diter {

@@ -1,7 +1,6 @@
 pub(crate) mod map;
 pub(crate) mod encoded;
 pub(crate) mod chunk;
-use std::fs::File;
 
 use bincode::{Decode, Encode};
 
