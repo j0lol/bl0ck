@@ -8,15 +8,13 @@ use rand::{
 };
 use rollgrid::rollgrid3d::RollGrid3D;
 
-#[derive(Copy, Clone, Default, Encode, Decode, PartialEq)]
+#[derive(Copy, Clone, Default, Encode, Decode, PartialEq, Eq)]
 #[repr(u32)]
+#[derive(Debug)]
 pub enum BlockKind {
     #[default]
     Air = 0,
     Brick,
-}
-pub struct Block {
-    kind: BlockKind,
 }
 
 #[cfg(not(target_arch = "wasm32"))]

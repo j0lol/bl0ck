@@ -36,8 +36,6 @@ struct InstanceRaw {
 
 impl InstanceRaw {
     fn desc() -> wgpu::VertexBufferLayout<'static> {
-
-
         wgpu::VertexBufferLayout {
             array_stride: size_of::<InstanceRaw>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
@@ -98,7 +96,7 @@ pub async fn run() {
     init_logger();
 
     log::info!("Hello world!");
-    preload_chunk_cache();
+    // preload_chunk_cache();
     let event_loop = EventLoop::with_user_event().build().unwrap_throw();
 
     let mut app = app::Application::new(&event_loop, "BL0CK");

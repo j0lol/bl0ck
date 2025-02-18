@@ -2,7 +2,8 @@
   "actions" : {
     "run" : {
       "enabled" : true,
-      "script" : "cargo run -r"
+      "script" : "RUST_BACKTRACE=full cargo run -r"
     }
-  }
+  },
+  "openLogOnRun" : "fail"
 }

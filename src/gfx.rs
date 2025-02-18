@@ -1,12 +1,13 @@
 mod camera;
 mod light;
-mod model;
-mod resources;
+pub(crate) mod model;
+pub(crate) mod resources;
 mod texture;
 
 use crate::gfx::camera::CameraUniform;
-use crate::gfx::model::DrawLight;
-use crate::world::chunk::{sl3get, sl3get_opt, CHUNK_SIZE};
+use crate::gfx::model::{DrawLight, Mesh, ModelVertex};
+use crate::world::chunk::{simple_mesh, sl3get, sl3get_opt, Chunk, ChunkScramble, CHUNK_SIZE};
+use crate::world::chunk::{FULL_CHUNK, HALF_CHUNK};
 use crate::{
     app::WASM_WIN_SIZE,
     gfx::model::Vertex,
@@ -16,8 +17,9 @@ use crate::{
     Instance, InstanceRaw,
 };
 use egui_wgpu::ScreenDescriptor;
-use glam::{uvec2, vec3, IVec3, Quat, Vec3};
-use std::f32::consts::{FRAC_PI_2, FRAC_PI_3};
+use glam::{ivec3, uvec2, vec3, IVec3, Quat, Vec3};
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_3, PI};
+use std::mem;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use wgpu::BindingResource;
@@ -249,11 +251,12 @@ impl Gfx {
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    required_features: if adapter.get_info().backend == wgpu::Backend::Gl {
-                        wgpu::Features::empty()
-                    } else {
-                        wgpu::Features::POLYGON_MODE_LINE
-                    },
+                    // required_features: if adapter.get_info().backend == wgpu::Backend::Gl {
+                    //     wgpu::Features::empty()
+                    // } else {
+                    //     wgpu::Features::POLYGON_MODE_LINE
+                    // },
+                    required_features: wgpu::Features::empty(),
 
                     // WebGL does not support all of wgpu's features
                     required_limits: if adapter.get_info().backend == wgpu::Backend::Gl {
@@ -342,6 +345,20 @@ impl Gfx {
             mouse_focused: false,
         };
 
+        let model = HALF_CHUNK()
+            .model(&device, &queue, &texture_bind_group_layout)
+            .await
+            .unwrap();
+
+        // let model = resources::load_model(
+        //     "blender_default_cube.obj",
+        //     &device,
+        //     &queue,
+        //     &texture_bind_group_layout,
+        // )
+        // .await
+        // .unwrap();
+
         // MAP LOAD
 
         let map = crate::world::map::new();
@@ -354,15 +371,6 @@ impl Gfx {
             contents: bytemuck::cast_slice(&instance_data),
             usage: wgpu::BufferUsages::VERTEX,
         });
-
-        let obj_model = resources::load_model(
-            "blender_default_cube.obj",
-            &device,
-            &queue,
-            &texture_bind_group_layout,
-        )
-        .await
-        .unwrap();
 
         log::info!("Light setup!");
         let light = camera::Camera::new(vec3(0., 300., 0.), -90.0, -20.0);
@@ -563,7 +571,7 @@ impl Gfx {
                 }),
                 surface_config.format,
                 Some(texture::Texture::DEPTH_FORMAT),
-                &[model::ModelVertex::desc(), InstanceRaw::desc()],
+                &[ModelVertex::desc(), InstanceRaw::desc()],
                 wgpu::ShaderModuleDescriptor {
                     label: Some("Normal Shader"),
                     source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
@@ -621,7 +629,7 @@ impl Gfx {
                 sun_speed: FRAC_PI_3,
             },
             object: ObjectState {
-                model: obj_model,
+                model,
                 instances,
                 instance_buffer,
                 remake: false,
@@ -656,7 +664,7 @@ impl Gfx {
         );
     }
 
-    fn remake_instance_buf(map: &WorldMap) -> Vec<Instance> {
+    fn old_remake_instance_buf(map: &WorldMap) -> Vec<Instance> {
         let mut instances = vec![];
 
         const SPACE_BETWEEN: f32 = 2.0;
@@ -741,6 +749,18 @@ impl Gfx {
         instances
     }
 
+    fn remake_instance_buf(map: &WorldMap) -> Vec<Instance> {
+        let mut instances = vec![];
+
+        let instance = Instance {
+            position: Default::default(),
+            rotation: Default::default(),
+        };
+        instances.push(instance);
+
+        instances
+    }
+
     pub fn update_instance_buf(&mut self, map: &WorldMap) {
         let instances = Self::remake_instance_buf(map);
 
@@ -819,11 +839,11 @@ impl Gfx {
             render_pass.set_pipeline(pipeline.one());
             render_pass.set_vertex_buffer(1, self.object.instance_buffer.slice(..));
 
-            render_pass.draw_light_model_instanced(
-                &self.object.model,
-                0..self.object.instances.len() as u32,
-                &[bind_group],
-            );
+            // render_pass.draw_light_model_instanced(
+            //     &self.object.model,
+            //     0..self.object.instances.len() as u32,
+            //     &[bind_group],
+            // );
         }
 
         encoder.pop_debug_group();
@@ -863,14 +883,22 @@ impl Gfx {
             use crate::gfx::model::DrawLight;
 
             render_pass.set_pipeline(pipeline.two().1);
-            render_pass.draw_light_model(&self.object.model, &[bind_group]);
+            // render_pass.draw_light_model(&self.object.model, &[bind_group]);
 
             render_pass.set_pipeline(pipeline.two().0);
-            render_pass.draw_model_instanced(
-                &self.object.model,
-                0..self.object.instances.len() as u32,
-                &[bind_group],
-            );
+            render_pass.draw_model(&self.object.model, &[bind_group]);
+
+            // render_pass.draw_mesh(
+            //     &self.object.world_mesh,
+            //     &self.object.model.materials[0],
+            //     &[bind_group],
+            // );
+            // let mesh = &self.object.world_mesh;
+            // render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..784));
+            // render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            // render_pass.set_bind_group(0, &self.object.model.materials[0].bind_group, &[]);
+            // render_pass.set_bind_group(1, Some(&*bind_group), &[]);
+            // render_pass.draw(0..mesh.num_elements, 0..1);
         }
 
         encoder.pop_debug_group();

@@ -9,7 +9,6 @@ use winit::{
 
 use crate::world::{chunk::Chunk, map::RENDER_GRID_SIZE, World};
 
-
 const MAX_CAMERA_PITCH: f32 = (3.0 / std::f32::consts::PI) - 0.0001;
 
 type Rad = f32;
@@ -118,7 +117,7 @@ impl CameraController {
             scroll: 0.,
             speed,
             sensitivity,
-            load_chunks: true,
+            load_chunks: false,
         }
     }
 
@@ -188,18 +187,18 @@ impl CameraController {
 
         if self.load_chunks {
             const BLOCK_UNIT_SIZE: i32 = 32;
-            let chunk_relative = IVec3::from(
-                (camera.position.x as i32 / BLOCK_UNIT_SIZE,
+            let chunk_relative = IVec3::from((
+                camera.position.x as i32 / BLOCK_UNIT_SIZE,
                 camera.position.y as i32 / BLOCK_UNIT_SIZE,
                 camera.position.z as i32 / BLOCK_UNIT_SIZE,
-            )) + IVec3::splat(-(RENDER_GRID_SIZE as i32/2));
+            )) + IVec3::splat(-(RENDER_GRID_SIZE as i32 / 2));
             if chunk_relative != world.map.chunks.offset().into() {
-                world
-                    .map
-                    .chunks
-                    .reposition((IVec3::from(chunk_relative)).into(), |_old, new, chunk| {
+                world.map.chunks.reposition(
+                    (IVec3::from(chunk_relative)).into(),
+                    |_old, new, chunk| {
                         *chunk = Chunk::load(ivec3(new.0, new.1, new.2)).unwrap();
-                    });
+                    },
+                );
                 *remake = true;
             }
         }
@@ -235,4 +234,3 @@ impl CameraUniform {
         self.view_proj = projection.mat4() * camera.mat4();
     }
 }
-
