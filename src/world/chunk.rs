@@ -1,6 +1,8 @@
 use super::map::BlockKind;
-use crate::gfx::model::{Mesh, Model};
+use crate::gfx::model::{Mesh, Model, ModelVertex};
+use crate::gfx::resources::ProcessingModel;
 use bincode::{Decode, Encode};
+use futures::StreamExt;
 use glam::{ivec3, vec3, I8Vec3, IVec3, Vec2, Vec3};
 use itertools::Itertools;
 use std::sync::Mutex;
@@ -102,8 +104,8 @@ pub struct QuadGroups {
 }
 
 pub struct Face<'a> {
-    side: Vec3,
-    quad: &'a Quad,
+    pub(crate) side: Vec3,
+    pub(crate) quad: &'a Quad,
 }
 
 impl<'a> Face<'a> {
@@ -204,7 +206,7 @@ impl<'a> Face<'a> {
     }
 }
 
-fn side_lookup(value: usize) -> Vec3 {
+pub fn side_lookup(value: usize) -> Vec3 {
     match value {
         0 => Vec3::NEG_X,
         1 => Vec3::X,
@@ -455,59 +457,47 @@ impl Chunk {
     }
 
     fn build_mesh(&self, device: &wgpu::Device) -> Result<Mesh, Box<dyn std::error::Error>> {
-        let mesh = HALF_CHUNK();
-        let mesh = simple_mesh(&mesh);
-        let mut positions: Vec<[f32; 3]> = Vec::new();
-        let mut indices = Vec::new();
-        let mut normals: Vec<[f32; 3]> = Vec::new();
-        let mut uvs = Vec::new();
+        let quad_groups = simple_mesh(self);
 
-        for face in mesh.iter() {
-            positions.extend_from_slice(&face.positions(1.0).map(|x| x.into())); // Voxel size is 1m
-            indices.extend_from_slice(&face.indices(positions.len() as u32));
-            normals.extend_from_slice(&face.normals().map(|x| x.into()));
-            uvs.extend_from_slice(&face.uvs(false, true));
-        }
-
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(&positions),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(&indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        let mesh = Mesh {
-            name: "".to_string(),
-            vertex_buffer,
-            index_buffer,
-            num_elements: indices.len() as u32,
-            material: 0,
-        };
-
-        Ok(mesh)
+        Ok(quad_groups.mesh(device, 0))
     }
+
     pub async fn model(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         tex_bgl: &wgpu::BindGroupLayout,
     ) -> Result<Model, Box<dyn std::error::Error>> {
-        Ok(Model {
-            meshes: vec![self.build_mesh(device)?],
-            materials: crate::gfx::resources::load_model(
-                "blender_default_cube.obj",
-                &device,
-                &queue,
-                &tex_bgl,
-            )
-            .await?
-            .materials,
-        })
+        let mesh = simple_mesh(self);
+        let vertices = mesh.positions();
+        let indices = mesh.indices();
+
+        let mut vertices = vec![];
+        for face in mesh.iter() {
+            let vertex = ModelVertex {
+                position: face.side.into(),
+                normal: face.normals()[0].into(),
+                tex_coords: face.uvs(false, true)[0].into(),
+            };
+            vertices.push(vertex);
+        }
+
+        Ok(crate::gfx::primitive::PrimitiveMesh::new(
+            device, &queue, &tex_bgl, &*vertices, &indices,
+        )
+        .await
+        .model)
+        // Ok(Model {
+        //     meshes: vec![self.build_mesh(device)?],
+        //     materials: crate::gfx::resources::load_model(
+        //         "blender_default_cube.obj",
+        //         &device,
+        //         &queue,
+        //         &tex_bgl,
+        //     )
+        //     .await?
+        //     .materials,
+        // })
     }
 }
 
@@ -531,6 +521,35 @@ pub fn preload_chunk_cache() {
         for (x, y, z) in _3diter {
             let _ = Chunk::load(ivec3(x, y, z));
         }
+    }
+}
+
+impl ProcessingModel for QuadGroups {
+    fn positions(&self) -> Vec<f32> {
+        self.iter()
+            .flat_map(|f| f.positions(1.0).map(|Vec3 { x, y, z }| vec![x, y, z]))
+            .flatten()
+            .collect_vec()
+    }
+
+    fn normals(&self) -> Vec<f32> {
+        self.iter()
+            .flat_map(|f| f.normals().map(|Vec3 { x, y, z }| vec![x, y, z]))
+            .flatten()
+            .collect_vec()
+    }
+
+    fn indices(&self) -> Vec<u32> {
+        self.iter()
+            .flat_map(|f| f.indices(self.positions().len() as u32))
+            .collect_vec()
+    }
+
+    fn tex_coords(&self) -> Vec<f32> {
+        self.iter()
+            .flat_map(|f| f.uvs(false, true).map(|Vec2 { x, y }| vec![x, y]))
+            .flatten()
+            .collect_vec()
     }
 }
 

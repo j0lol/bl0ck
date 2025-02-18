@@ -170,17 +170,17 @@ impl EguiRenderer {
                 ));
                 ui.label(format!("FPS: {:.1} (jittery)", 1.0 / dt));
                 ui.label(format!("Instances: {:?}", gfx.object.instances.len()));
-                ui.label(format!(
-                    "Vertices (guess): {:?}",
-                    gfx.object.instances.len() as u32
-                        * gfx
-                            .object
-                            .model
-                            .meshes
-                            .iter()
-                            .map(|x| x.num_elements)
-                            .sum::<u32>()
-                ));
+                // ui.label(format!(
+                //     "Vertices (guess): {:?}",
+                //     gfx.object.instances.len() as u32
+                //         * gfx
+                //             .object
+                //             .model
+                //             .meshes
+                //             .iter()
+                //             .map(|x| x.num_elements)
+                //             .sum::<u32>()
+                // ));
 
                 ui.separator();
 
@@ -251,13 +251,28 @@ impl EguiRenderer {
                 ui.checkbox(&mut camera_load, "Camera position loads chunks");
                 ui.label("Move chunk window... ");
                 ui.horizontal(|ui| {
-                    ui.add_enabled(!camera_load, egui::DragValue::new(&mut grid_x).speed(0.1).update_while_editing(false));
+                    ui.add_enabled(
+                        !camera_load,
+                        egui::DragValue::new(&mut grid_x)
+                            .speed(0.1)
+                            .update_while_editing(false),
+                    );
                     ui.label("x ");
 
-                    ui.add_enabled(!camera_load, egui::DragValue::new(&mut grid_y).speed(0.1).update_while_editing(false));
+                    ui.add_enabled(
+                        !camera_load,
+                        egui::DragValue::new(&mut grid_y)
+                            .speed(0.1)
+                            .update_while_editing(false),
+                    );
                     ui.label("y ");
 
-                    ui.add_enabled(!camera_load, egui::DragValue::new(&mut grid_z).speed(0.1).update_while_editing(false));
+                    ui.add_enabled(
+                        !camera_load,
+                        egui::DragValue::new(&mut grid_z)
+                            .speed(0.1)
+                            .update_while_editing(false),
+                    );
                     ui.label("z.");
                 });
 
@@ -320,7 +335,5 @@ impl EguiRenderer {
                 gfx.object.remake = true;
             }
         }
-
-
     }
 }

@@ -52,6 +52,7 @@ pub struct Material {
     pub bind_group: wgpu::BindGroup,
 }
 
+#[derive(Debug)]
 pub struct Mesh {
     pub name: String,
     pub vertex_buffer: wgpu::Buffer,

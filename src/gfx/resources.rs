@@ -1,9 +1,11 @@
+use super::{model, texture};
+use crate::gfx::model::{Material, Mesh};
+use crate::gfx::texture::Texture;
 use cfg_if::cfg_if;
 use std::error::Error;
 use std::io::{BufReader, Cursor};
 use wgpu::util::DeviceExt;
-
-use super::{model, texture};
+use wgpu::{BindGroupLayout, Device, Queue};
 
 #[cfg(target_arch = "wasm32")]
 fn format_url(file_name: &str) -> reqwest::Url {
@@ -22,6 +24,137 @@ fn format_url(file_name: &str) -> reqwest::Url {
         file_name
     ))
     .unwrap()
+}
+
+pub trait ProcessingModel {
+    fn positions(&self) -> Vec<f32>;
+    fn normals(&self) -> Vec<f32>;
+    fn indices(&self) -> Vec<u32>;
+    fn tex_coords(&self) -> Vec<f32>;
+
+    fn tri_positions(&self, tri: usize) -> [f32; 3] {
+        let positions = self.positions();
+        [
+            positions[tri * 3],
+            positions[tri * 3 + 1],
+            positions[tri * 3 + 2],
+        ]
+    }
+
+    fn tri_normals(&self, tri: usize) -> [f32; 3] {
+        let normals = self.normals();
+        if normals.is_empty() {
+            glam::Vec3::ZERO.into()
+        } else {
+            [normals[tri * 3], normals[tri * 3 + 1], normals[tri * 3 + 2]]
+        }
+    }
+
+    fn mesh(&self, device: &wgpu::Device, material_id: usize) -> Mesh {
+        let vertices = (0..self.positions().len() / 3)
+            .map(|i| model::ModelVertex {
+                position: self.tri_positions(i),
+                tex_coords: [self.tex_coords()[i * 2], 1.0 - self.tex_coords()[i * 2 + 1]],
+                normal: self.tri_normals(i),
+            })
+            .collect::<Vec<_>>();
+
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Mesh Vertex Buffer"),
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Mesh Index Buffer"),
+            contents: bytemuck::cast_slice(&self.indices()),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+
+        Mesh {
+            name: String::from("A Mesh"),
+            vertex_buffer,
+            index_buffer,
+            num_elements: self.indices().len() as u32,
+            material: material_id,
+        }
+    }
+}
+impl ProcessingModel for tobj::Model {
+    fn positions(&self) -> Vec<f32> {
+        self.mesh.positions.clone()
+    }
+
+    fn normals(&self) -> Vec<f32> {
+        self.mesh.normals.clone()
+    }
+
+    fn indices(&self) -> Vec<u32> {
+        self.mesh.indices.clone()
+    }
+
+    fn tex_coords(&self) -> Vec<f32> {
+        self.mesh.texcoords.clone()
+    }
+}
+
+pub trait ProcessingMaterial {
+    fn name(&self) -> &str;
+    async fn diffuse(
+        &self,
+        device: &wgpu::Device,
+        queue: &Queue,
+    ) -> Result<texture::Texture, Box<dyn Error>>;
+
+    async fn read(
+        self,
+        device: &wgpu::Device,
+        queue: &Queue,
+        layout: &BindGroupLayout,
+    ) -> Result<Material, Box<dyn Error>>
+    where
+        Self: std::marker::Sized,
+    {
+        let diffuse = self.diffuse(device, queue).await?;
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&diffuse.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&diffuse.sampler),
+                },
+            ],
+            label: None,
+        });
+
+        Ok(Material {
+            name: self.name().to_string(),
+            diffuse_texture: diffuse,
+            bind_group,
+        })
+    }
+}
+
+impl ProcessingMaterial for tobj::Material {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn diffuse(&self, device: &Device, queue: &Queue) -> Result<Texture, Box<dyn Error>> {
+        load_texture(
+            self.diffuse_texture
+                .clone()
+                .ok_or(ModelLoadError::TextureDiffuseMissing)?,
+            device,
+            queue,
+        )
+        .await
+    }
 }
 
 pub async fn load_string(file_name: &str) -> Result<String, Box<dyn Error>> {
@@ -64,12 +197,12 @@ pub async fn load_binary(file_name: &str) -> Result<Vec<u8>, Box<dyn Error>> {
 }
 
 pub async fn load_texture(
-    file_name: &str,
+    file_name: String,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
 ) -> Result<texture::Texture, Box<dyn Error + 'static>> {
-    let data = load_binary(file_name).await?;
-    texture::Texture::from_bytes(device, queue, &data, file_name).map_err(|e| e.into())
+    let data = load_binary(&file_name).await?;
+    texture::Texture::from_bytes(device, queue, &data, &file_name).map_err(|e| e.into())
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -102,97 +235,20 @@ pub async fn load_model(
     )
     .await?;
 
-    let read_material = |material: tobj::Material| async {
-        let diffuse_texture = load_texture(
-            &material
-                .diffuse_texture
-                .ok_or(ModelLoadError::TextureDiffuseMissing)?,
-            device,
-            queue,
-        )
-        .await?;
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                },
-            ],
-            label: None,
-        });
-
-        Ok::<_, Box<dyn Error>>(model::Material {
-            name: material.name,
-            diffuse_texture,
-            bind_group,
-        })
-    };
-
-    let mesh_positions = |m: &tobj::Model, i: usize| {
-        [
-            m.mesh.positions[i * 3],
-            m.mesh.positions[i * 3 + 1],
-            m.mesh.positions[i * 3 + 2],
-        ]
-    };
-    let mesh_normals = |m: &tobj::Model, i: usize| {
-        if m.mesh.normals.is_empty() {
-            glam::Vec3::ZERO.into()
-        } else {
-            [
-                m.mesh.normals[i * 3],
-                m.mesh.normals[i * 3 + 1],
-                m.mesh.normals[i * 3 + 2],
-            ]
-        }
-    };
-
-    let read_mesh = |m: tobj::Model| {
-        let vertices = (0..m.mesh.positions.len() / 3)
-            .map(|i| model::ModelVertex {
-                position: mesh_positions(&m, i),
-                tex_coords: [m.mesh.texcoords[i * 2], 1.0 - m.mesh.texcoords[i * 2 + 1]],
-                normal: mesh_normals(&m, i),
-            })
-            .collect::<Vec<_>>();
-
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("{file_name:?} Vertex Buffer")),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("{file_name:?} Index Buffer")),
-            contents: bytemuck::cast_slice(&m.mesh.indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        model::Mesh {
-            name: file_name.to_string(),
-            vertex_buffer,
-            index_buffer,
-            num_elements: m.mesh.indices.len() as u32,
-            material: m.mesh.material_id.unwrap_or(0),
-        }
-    };
-
     let materials = futures::future::join_all(
         obj_materials?
             .into_iter()
-            .map(read_material)
+            .map(|m| m.read(device, queue, layout))
             .collect::<Vec<_>>(),
     )
     .await
     .into_iter()
     .collect::<Result<Vec<_>, _>>()?;
 
-    let meshes = models.into_iter().map(read_mesh).collect();
+    let meshes = models
+        .into_iter()
+        .map(|m| m.mesh(device, m.mesh.material_id.unwrap_or(0)))
+        .collect();
 
     Ok(model::Model { meshes, materials })
 }

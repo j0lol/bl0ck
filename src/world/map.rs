@@ -30,7 +30,7 @@ impl Distribution<BlockKind> for StandardUniform {
 pub struct WorldMap {
     pub chunks: RollGrid3D<Chunk>,
 }
-pub(crate) const RENDER_GRID_SIZE: usize = 15;
+pub(crate) const RENDER_GRID_SIZE: usize = 3;
 pub fn new() -> WorldMap {
     WorldMap {
         chunks: RollGrid3D::new(

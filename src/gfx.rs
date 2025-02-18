@@ -1,12 +1,19 @@
 mod camera;
 mod light;
 pub(crate) mod model;
+pub(crate) mod primitive;
 pub(crate) mod resources;
 mod texture;
 
 use crate::gfx::camera::CameraUniform;
-use crate::gfx::model::{DrawLight, Mesh, ModelVertex};
-use crate::world::chunk::{simple_mesh, sl3get, sl3get_opt, Chunk, ChunkScramble, CHUNK_SIZE};
+use crate::gfx::model::{DrawLight, Mesh, Model, ModelVertex};
+use crate::gfx::primitive::cube::Faces;
+use crate::gfx::primitive::PrimitiveMeshBuilder;
+use crate::gfx::resources::ProcessingModel;
+use crate::world::chunk::{
+    side_lookup, simple_mesh, sl3get, sl3get_opt, Chunk, ChunkScramble, ChunkTrait, Face, Quad,
+    QuadGroups, CHUNK_SIZE,
+};
 use crate::world::chunk::{FULL_CHUNK, HALF_CHUNK};
 use crate::{
     app::WASM_WIN_SIZE,
@@ -18,6 +25,7 @@ use crate::{
 };
 use egui_wgpu::ScreenDescriptor;
 use glam::{ivec3, uvec2, vec3, IVec3, Quat, Vec3};
+use itertools::{iproduct, Itertools};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_3, PI};
 use std::mem;
 use std::sync::Arc;
@@ -45,7 +53,7 @@ pub struct InteractState {
     pub sun_speed: f32,
 }
 pub struct ObjectState {
-    pub model: model::Model,
+    pub models: Vec<Model>,
     pub instances: Vec<Instance>,
     pub instance_buffer: wgpu::Buffer,
     pub remake: bool,
@@ -142,7 +150,8 @@ fn create_render_pipeline(
             topology: wgpu::PrimitiveTopology::TriangleList,
             strip_index_format: None,
             front_face: wgpu::FrontFace::Ccw,
-            cull_mode: Some(wgpu::Face::Back),
+            // cull_mode: Some(wgpu::Face::Back),
+            cull_mode: None, // FIXME this is stupid!
             // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
             polygon_mode,
             // Requires Features::DEPTH_CLIP_CONTROL
@@ -251,12 +260,12 @@ impl Gfx {
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    // required_features: if adapter.get_info().backend == wgpu::Backend::Gl {
-                    //     wgpu::Features::empty()
-                    // } else {
-                    //     wgpu::Features::POLYGON_MODE_LINE
-                    // },
-                    required_features: wgpu::Features::empty(),
+                    required_features: if adapter.get_info().backend == wgpu::Backend::Gl {
+                        wgpu::Features::empty()
+                    } else {
+                        wgpu::Features::POLYGON_MODE_LINE
+                    },
+                    // required_features: wgpu::Features::empty(),
 
                     // WebGL does not support all of wgpu's features
                     required_limits: if adapter.get_info().backend == wgpu::Backend::Gl {
@@ -321,11 +330,7 @@ impl Gfx {
                 label: Some("texture_bind_group_layout"),
             });
 
-        let camera = camera::Camera::new(
-            vec3(50., 20., 50.),
-            -std::f32::consts::FRAC_PI_2,
-            std::f32::consts::FRAC_PI_3,
-        );
+        let camera = camera::Camera::new(vec3(10., 10., -5.), 2.4, -1.);
         let projection = camera::Projection::new(
             uvec2(surface_config.width, surface_config.height).as_vec2(),
             FRAC_PI_2,
@@ -345,23 +350,161 @@ impl Gfx {
             mouse_focused: false,
         };
 
-        let model = HALF_CHUNK()
-            .model(&device, &queue, &texture_bind_group_layout)
-            .await
-            .unwrap();
+        // let test_chunk = QuadGroups {
+        //     groups: [
+        //         vec![Quad {
+        //             voxel: [1, 1, 0],
+        //             width: 2,
+        //             height: 3,
+        //         }],
+        //         vec![Quad {
+        //             voxel: [1, 1, 1],
+        //             width: 2,
+        //             height: 3,
+        //         }],
+        //         vec![Quad {
+        //             voxel: [0, 0, 0],
+        //             width: 2,
+        //             height: 9,
+        //         }],
+        //         vec![Quad {
+        //             voxel: [0, 0, 1],
+        //             width: 2,
+        //             height: 9,
+        //         }],
+        //         vec![Quad {
+        //             voxel: [0, 1, 1],
+        //             width: 2,
+        //             height: 9,
+        //         }],
+        //         vec![Quad {
+        //             voxel: [0, 1, 0],
+        //             width: 2,
+        //             height: 9,
+        //         }],
+        //     ],
+        // };
+        //
+        // let model = Model {
+        //     meshes: vec![model],
+        //     materials: resources::load_model(
+        //         "blender_default_cube.obj",
+        //         &device,
+        //         &queue,
+        //         &texture_bind_group_layout,
+        //     )
+        //     .await
+        //     .unwrap()
+        //     .materials,
+        // };
 
-        // let model = resources::load_model(
-        //     "blender_default_cube.obj",
-        //     &device,
-        //     &queue,
-        //     &texture_bind_group_layout,
-        // )
-        // .await
-        // .unwrap();
+        let mut models = vec![];
+        // models.push(
+        //     resources::load_model(
+        //         "blender_default_cube.obj",
+        //         &device,
+        //         &queue,
+        //         &texture_bind_group_layout,
+        //     )
+        //     .await
+        //     .unwrap(),
+        // );
+        models.push(
+            resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
+                .await
+                .unwrap(),
+        );
+        // models.push(
+        //     primitive::PrimitiveMesh::new(
+        //         &device,
+        //         &queue,
+        //         &texture_bind_group_layout,
+        //         primitive::cube::cube_vertices(1.0).as_ref(),
+        //         primitive::cube::cube_indices().as_ref(), /* &std::vec::Vec<u32> */
+        //     )
+        //     .await
+        //     .model,
+        // );
+        // models.push({
+        //     PrimitiveMeshBuilder::new()
+        //         // .cube(0., 0., 0.)
+        //         .cube(Faces::ALL, 3., 0., 0.)
+        //         .cube(Faces::ALL, -3., 0., 0.)
+        //         .build(&device, &queue, &texture_bind_group_layout)
+        //         .await
+        //         .model
+        // });
+
+        // models.push(
+        //     HALF_CHUNK()
+        //         .model(&device, &queue, &texture_bind_group_layout)
+        //         .await
+        //         .unwrap(),
+        // );
+        // models.push({
+        //     let mut buffer = QuadGroups::default();
+        //
+        //     let block_pos = [0, 2, 0];
+        //     let mut quads = (0..6)
+        //         .map(side_lookup)
+        //         .map(|i| Quad {
+        //             voxel: block_pos,
+        //             width: 2,
+        //             height: 2,
+        //         })
+        //         .collect_vec();
+        //
+        //     buffer.groups[0].append(&mut quads);
+        //
+        //     let mesh = buffer.mesh(&device, 0);
+        //     Model {
+        //         meshes: resources::load_model(
+        //             "blender_default_cube.obj",
+        //             &device,
+        //             &queue,
+        //             &texture_bind_group_layout,
+        //         )
+        //         .await
+        //         .unwrap()
+        //         .meshes,
+        //         materials: resources::load_model(
+        //             "cube.obj",
+        //             &device,
+        //             &queue,
+        //             &texture_bind_group_layout,
+        //         )
+        //         .await
+        //         .unwrap()
+        //         .materials,
+        //     }
+        // });
 
         // MAP LOAD
-
         let map = crate::world::map::new();
+
+        for ((cx, cy, cz), chunk) in map.chunks.iter() {
+            let mut mesh = PrimitiveMeshBuilder::new();
+
+            for (x, y, z) in iproduct!(0..Chunk::X, 0..Chunk::Y, 0..Chunk::Z) {
+                match chunk.get(x, y, z) {
+                    BlockKind::Air => continue,
+                    BlockKind::Brick => {
+                        mesh = mesh.cube(
+                            Faces::ALL,
+                            (cx as f32 * Chunk::X as f32) + x as f32 * 2.,
+                            (cy as f32 * Chunk::Y as f32) + y as f32 * 2.,
+                            (cz as f32 * Chunk::Z as f32) + z as f32 * 2.,
+                        );
+                    }
+                }
+            }
+            if let Some(mesh) = mesh
+                .build(&device, &queue, &texture_bind_group_layout)
+                .await
+            {
+                models.push({ mesh.model });
+            }
+        }
 
         let instances = Self::remake_instance_buf(&map);
 
@@ -629,7 +772,7 @@ impl Gfx {
                 sun_speed: FRAC_PI_3,
             },
             object: ObjectState {
-                model,
+                models,
                 instances,
                 instance_buffer,
                 remake: false,
@@ -886,7 +1029,9 @@ impl Gfx {
             // render_pass.draw_light_model(&self.object.model, &[bind_group]);
 
             render_pass.set_pipeline(pipeline.two().0);
-            render_pass.draw_model(&self.object.model, &[bind_group]);
+            for model in &self.object.models {
+                render_pass.draw_model(model, &[bind_group]);
+            }
 
             // render_pass.draw_mesh(
             //     &self.object.world_mesh,
