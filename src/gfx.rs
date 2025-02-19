@@ -6,13 +6,12 @@ pub(crate) mod resources;
 mod texture;
 
 use crate::gfx::camera::CameraUniform;
-use crate::gfx::model::{DrawLight, Mesh, Model, ModelVertex};
+use crate::gfx::model::{Material, Mesh, Model, ModelVertex};
 use crate::gfx::primitive::cube::Faces;
 use crate::gfx::primitive::PrimitiveMeshBuilder;
-use crate::gfx::resources::ProcessingModel;
+use crate::gfx::resources::load_model;
 use crate::world::chunk::{
-    side_lookup, simple_mesh, sl3get, sl3get_opt, Chunk, ChunkScramble, ChunkTrait, Face, Quad,
-    QuadGroups, CHUNK_SIZE,
+    side_lookup, simple_mesh, Chunk, ChunkScramble, ChunkTrait, Face, Quad, QuadGroups, CHUNK_SIZE,
 };
 use crate::world::chunk::{FULL_CHUNK, HALF_CHUNK};
 use crate::{
@@ -24,13 +23,12 @@ use crate::{
     Instance, InstanceRaw,
 };
 use egui_wgpu::ScreenDescriptor;
-use glam::{ivec3, uvec2, vec3, IVec3, Quat, Vec3};
-use itertools::{iproduct, Itertools};
+use glam::{uvec2, vec3, IVec3, Quat, Vec3};
+use itertools::iproduct;
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_3, PI};
-use std::mem;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
-use wgpu::BindingResource;
+use wgpu::{BindGroupLayout, BindingResource, Device};
 use winit::{
     dpi::PhysicalSize,
     event::{KeyEvent, WindowEvent},
@@ -54,6 +52,7 @@ pub struct InteractState {
 }
 pub struct ObjectState {
     pub models: Vec<Model>,
+    pub material: Arc<Vec<Material>>,
     pub instances: Vec<Instance>,
     pub instance_buffer: wgpu::Buffer,
     pub remake: bool,
@@ -64,12 +63,6 @@ pub struct LightState {
     pub projection: camera::Projection,
     pub uniform: CameraUniform,
     pub shadow_map: texture::Texture,
-}
-
-pub struct RenderPipelines {
-    camera: wgpu::RenderPipeline,
-    camera_wireframe: Option<wgpu::RenderPipeline>,
-    light: wgpu::RenderPipeline,
 }
 
 pub enum MaybeGfx {
@@ -150,8 +143,8 @@ fn create_render_pipeline(
             topology: wgpu::PrimitiveTopology::TriangleList,
             strip_index_format: None,
             front_face: wgpu::FrontFace::Ccw,
-            // cull_mode: Some(wgpu::Face::Back),
-            cull_mode: None, // FIXME this is stupid!
+            cull_mode: Some(wgpu::Face::Back),
+            // cull_mode: None,
             // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
             polygon_mode,
             // Requires Features::DEPTH_CLIP_CONTROL
@@ -192,7 +185,7 @@ impl<T> OneOrTwo<T> {
     }
     pub fn two(&mut self) -> (&mut T, &mut T) {
         match self {
-            OneOrTwo::One(t) => panic!("Used two() on a One."),
+            OneOrTwo::One(_) => panic!("Used two() on a One."),
             OneOrTwo::Two(x, y) => (x, y),
         }
     }
@@ -210,6 +203,7 @@ pub struct Gfx {
     pub surface_config: wgpu::SurfaceConfiguration,
     // pub render_pipelines: RenderPipelines,
     pub depth_texture: texture::Texture,
+    pub texture_bind_group_layout: BindGroupLayout,
 
     // pub shadow_map_buffer: wgpu::Buffer,
     // pub shadow_bind_group: wgpu::BindGroup,
@@ -409,11 +403,11 @@ impl Gfx {
         //     .await
         //     .unwrap(),
         // );
-        models.push(
-            resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
-                .await
-                .unwrap(),
-        );
+        // models.push(
+        //     resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
+        //         .await
+        //         .unwrap(),
+        // );
         // models.push(
         //     primitive::PrimitiveMesh::new(
         //         &device,
@@ -479,34 +473,26 @@ impl Gfx {
         //     }
         // });
 
+        let material = load_model(
+            "blender_default_cube.obj",
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+        )
+        .await
+        .unwrap()
+        .materials;
+
         // MAP LOAD
         let map = crate::world::map::new();
+        Self::remake_mesh(&map, &mut models, &material, &device);
 
-        for ((cx, cy, cz), chunk) in map.chunks.iter() {
-            let mut mesh = PrimitiveMeshBuilder::new();
-
-            for (x, y, z) in iproduct!(0..Chunk::X, 0..Chunk::Y, 0..Chunk::Z) {
-                match chunk.get(x, y, z) {
-                    BlockKind::Air => continue,
-                    BlockKind::Brick => {
-                        mesh = mesh.cube(
-                            Faces::ALL,
-                            (cx as f32 * Chunk::X as f32) + x as f32 * 2.,
-                            (cy as f32 * Chunk::Y as f32) + y as f32 * 2.,
-                            (cz as f32 * Chunk::Z as f32) + z as f32 * 2.,
-                        );
-                    }
-                }
-            }
-            if let Some(mesh) = mesh
-                .build(&device, &queue, &texture_bind_group_layout)
-                .await
-            {
-                models.push({ mesh.model });
-            }
-        }
-
-        let instances = Self::remake_instance_buf(&map);
+        let instances = vec![
+            (Instance {
+                position: Default::default(),
+                rotation: Default::default(),
+            }),
+        ];
 
         let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -760,6 +746,7 @@ impl Gfx {
             camera: camera_state,
             shadow_pass,
             forward_pass,
+            texture_bind_group_layout,
             interact: InteractState {
                 wireframe: false,
                 clear_color: wgpu::Color {
@@ -776,6 +763,7 @@ impl Gfx {
                 instances,
                 instance_buffer,
                 remake: false,
+                material,
             },
             light: LightState {
                 object: light,
@@ -807,117 +795,18 @@ impl Gfx {
         );
     }
 
-    fn old_remake_instance_buf(map: &WorldMap) -> Vec<Instance> {
-        let mut instances = vec![];
-
-        const SPACE_BETWEEN: f32 = 2.0;
-        for (coords, chunk) in map.chunks.iter() {
-            let _3diter = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2);
-
-            let mut i = _3diter
-                .filter_map(|(x, y, z)| {
-                    if let BlockKind::Air = sl3get(&chunk.blocks, x, y, z) {
-                        return None;
-                    }
-
-                    // lookup if node is surrounded by nodes
-                    let mut do_not_occlude = false;
-                    let mut sum = vec![];
-
-                    for (x_, y_, z_) in [
-                        (-1_i32, 0_i32, 0_i32),
-                        (1, 0, 0),
-                        (0, -1, 0),
-                        (0, 1, 0),
-                        (0, 0, -1),
-                        (0, 0, 1),
-                    ] {
-                        if x == 0
-                            || y == 0
-                            || z == 0
-                            || x == CHUNK_SIZE.0 - 1
-                            || y == CHUNK_SIZE.2 - 1
-                            || z == CHUNK_SIZE.1 - 1
-                        {
-                            do_not_occlude = true;
-                            break;
-                        }
-
-                        let (x, y, z) = (x as i32 + x_, y as i32 + y_, z as i32 + z_);
-                        if x < 0 || y < 0 || z < 0
-                        // || x == CHUNK_SIZE.0 as i32 - 1
-                        // || y == CHUNK_SIZE.2 as i32 - 1
-                        // || z == CHUNK_SIZE.1 as i32 - 1
-                        {
-                            continue;
-                        }
-
-                        if let Some(block) =
-                            sl3get_opt(&chunk.blocks, x as usize, y as usize, z as usize)
-                        {
-                            sum.push(block)
-                        }
-                    }
-
-                    if !do_not_occlude && sum.iter().all(|b| *b == BlockKind::Brick) {
-                        return None;
-                    }
-
-                    let chunk_offset =
-                        IVec3::from(coords).as_vec3() * (SPACE_BETWEEN * CHUNK_SIZE.0 as f32);
-
-                    let mapping = |n| SPACE_BETWEEN * (n as f32 - CHUNK_SIZE.0 as f32 / 2.0);
-                    let position = vec3(
-                        mapping(x) + chunk_offset.x,
-                        (mapping(y) + chunk_offset.y),
-                        mapping(z) + chunk_offset.z,
-                    );
-
-                    let rotation = Quat::from_axis_angle(Vec3::Y, 0.0);
-
-                    Some(Instance { position, rotation })
-                })
-                .collect::<Vec<_>>();
-
-            instances.append(&mut i);
+    fn remake_mesh(
+        map: &WorldMap,
+        models: &mut Vec<Model>,
+        mats: &Arc<Vec<Material>>,
+        device: &Device,
+    ) {
+        models.clear();
+        for (chunk_pos, chunk) in map.chunks.iter() {
+            if let Some(mesh) = chunk.primitive_model(chunk_pos, device, mats) {
+                models.push(mesh);
+            }
         }
-
-        // WGPU Crashes with an empty instance buffer, add a small item out of camera vfar
-        if instances.is_empty() {
-            instances.push(Instance {
-                position: Vec3::splat(9999.),
-                rotation: Quat::from_axis_angle(Vec3::Y, 0.0),
-            })
-        }
-        instances
-    }
-
-    fn remake_instance_buf(map: &WorldMap) -> Vec<Instance> {
-        let mut instances = vec![];
-
-        let instance = Instance {
-            position: Default::default(),
-            rotation: Default::default(),
-        };
-        instances.push(instance);
-
-        instances
-    }
-
-    pub fn update_instance_buf(&mut self, map: &WorldMap) {
-        let instances = Self::remake_instance_buf(map);
-
-        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let instance_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Instance Buffer"),
-                contents: bytemuck::cast_slice(&instance_data),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-        self.object.instances = instances;
-        self.object.instance_buffer = instance_buffer;
-        self.object.remake = false;
     }
 
     pub(crate) fn render(
@@ -946,7 +835,7 @@ impl Gfx {
         if self.interact.shadows {
             let Pass {
                 pipeline,
-                bind_group,
+                bind_group: _,
                 uniform_bufs,
             } = &mut self.shadow_pass;
 
@@ -1115,7 +1004,13 @@ impl Gfx {
 
         // Object update
         if self.object.remake {
-            self.update_instance_buf(&world.map);
+            Self::remake_mesh(
+                &world.map,
+                &mut self.object.models,
+                &self.object.material,
+                &self.device,
+            );
+            self.object.remake = false;
         }
     }
 

@@ -1,5 +1,6 @@
 use super::texture;
 use std::ops::Range;
+use std::sync::Arc;
 
 pub trait Vertex {
     fn desc() -> wgpu::VertexBufferLayout<'static>;
@@ -43,7 +44,7 @@ impl Vertex for ModelVertex {
 
 pub struct Model {
     pub meshes: Vec<Mesh>,
-    pub materials: Vec<Material>,
+    pub materials: Arc<Vec<Material>>,
 }
 
 pub struct Material {

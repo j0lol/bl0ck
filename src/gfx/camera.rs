@@ -49,8 +49,8 @@ impl AxisInput {
 
 pub struct Camera {
     pub position: Vec3,
-    yaw: Rad,
-    pitch: Rad,
+    pub(crate) yaw: Rad,
+    pub(crate) pitch: Rad,
 }
 
 impl Camera {
@@ -117,7 +117,7 @@ impl CameraController {
             scroll: 0.,
             speed,
             sensitivity,
-            load_chunks: false,
+            load_chunks: true,
         }
     }
 
@@ -193,12 +193,12 @@ impl CameraController {
                 camera.position.z as i32 / BLOCK_UNIT_SIZE,
             )) + IVec3::splat(-(RENDER_GRID_SIZE as i32 / 2));
             if chunk_relative != world.map.chunks.offset().into() {
-                world.map.chunks.reposition(
-                    (IVec3::from(chunk_relative)).into(),
-                    |_old, new, chunk| {
+                world
+                    .map
+                    .chunks
+                    .reposition(chunk_relative.into(), |_old, new, chunk| {
                         *chunk = Chunk::load(ivec3(new.0, new.1, new.2)).unwrap();
-                    },
-                );
+                    });
                 *remake = true;
             }
         }

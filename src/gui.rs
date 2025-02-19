@@ -207,6 +207,10 @@ impl EguiRenderer {
 
                 ui.separator();
 
+                ui.label(format!("Cam pos: {:?}", gfx.camera.object.position));
+                ui.label(format!("Cam yaw: {:?}", gfx.camera.object.yaw));
+                ui.label(format!("Cam pitch: {:?}", gfx.camera.object.pitch));
+
                 ui.add(
                     egui::Slider::new(&mut gfx.camera.controller.speed, 0.1..=1000.0)
                         .text("Cam Speed")
@@ -215,7 +219,7 @@ impl EguiRenderer {
 
                 ui.separator();
 
-                ui.label(format!("Camera input \"bitfield\":"));
+                ui.label("Camera input \"bitfield\":");
                 ui.label(
                     RichText::new(format!("{:?}", gfx.camera.controller.movement))
                         .font(FontId::monospace(11.0)),

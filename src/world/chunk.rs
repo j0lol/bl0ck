@@ -1,11 +1,13 @@
 use super::map::BlockKind;
-use crate::gfx::model::{Mesh, Model, ModelVertex};
+use crate::gfx::model::{Material, Mesh, Model, ModelVertex};
+use crate::gfx::primitive::cube::Faces;
+use crate::gfx::primitive::PrimitiveMeshBuilder;
 use crate::gfx::resources::ProcessingModel;
 use bincode::{Decode, Encode};
 use futures::StreamExt;
 use glam::{ivec3, vec3, I8Vec3, IVec3, Vec2, Vec3};
-use itertools::Itertools;
-use std::sync::Mutex;
+use itertools::{iproduct, Itertools};
+use std::sync::{Arc, Mutex};
 use std::{
     collections::HashMap,
     fs::File,
@@ -14,6 +16,7 @@ use std::{
     sync::LazyLock,
 };
 use wgpu::util::DeviceExt;
+use wgpu::Device;
 
 #[cfg(not(target_arch = "wasm32"))]
 static CHUNK_FILE_CACHE: LazyLock<Mutex<HashMap<IVec3, Chunk>>> =
@@ -24,16 +27,6 @@ pub(crate) const CHUNK_SIZE: (usize, usize, usize) = (16, 16, 16);
 
 // A [Block; X*Y*Z] would be a much more efficient datatype, but, well...
 pub type Slice3 = [BlockKind; CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2];
-
-pub fn sl3get(sl3: &Slice3, x: usize, y: usize, z: usize) -> BlockKind {
-    sl3[y + CHUNK_SIZE.2 * (z + CHUNK_SIZE.1 * x)]
-}
-pub fn sl3get_opt(sl3: &Slice3, x: usize, y: usize, z: usize) -> Option<BlockKind> {
-    sl3.get(y + CHUNK_SIZE.2 * (z + CHUNK_SIZE.1 * x)).copied()
-}
-pub fn sl3set(sl3: &mut Slice3, x: usize, y: usize, z: usize, new: BlockKind) {
-    sl3[y + CHUNK_SIZE.2 * (z + CHUNK_SIZE.1 * x)] = new;
-}
 
 pub const FULL_CHUNK: Chunk = Chunk {
     blocks: [BlockKind::Brick; CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2],
@@ -49,6 +42,14 @@ pub const HALF_CHUNK: fn() -> Chunk = || Chunk {
             .try_into()
             .unwrap()
     },
+};
+
+pub const TEST_CHUNK: fn() -> Chunk = || {
+    let mut blocks = [BlockKind::Air; CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2];
+    blocks[Chunk::linearize(12, 12, 12)] = BlockKind::Brick;
+    blocks[Chunk::linearize(12, 13, 12)] = BlockKind::Brick;
+
+    Chunk { blocks }
 };
 
 pub enum ChunkScramble {
@@ -85,6 +86,7 @@ pub trait ChunkTrait {
     }
 
     fn get(&self, x: usize, y: usize, z: usize) -> Self::Node;
+    fn get_opt(&self, x: usize, y: usize, z: usize) -> Option<Self::Node>;
 }
 
 pub trait Voxel: Eq {
@@ -243,7 +245,10 @@ impl ChunkTrait for Chunk {
     const Z: usize = 16;
 
     fn get(&self, x: usize, y: usize, z: usize) -> Self::Node {
-        sl3get(&self.blocks, x, y, z)
+        self.blocks[Chunk::linearize(x, y, z)]
+    }
+    fn get_opt(&self, x: usize, y: usize, z: usize) -> Option<Self::Node> {
+        self.blocks.get(Chunk::linearize(x, y, z)).copied()
     }
 }
 
@@ -312,8 +317,8 @@ impl Voxel for BlockKind {
 
 impl Chunk {
     fn generate_normal(world_pos: IVec3) -> Chunk {
-        let blocks = itertools::iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2)
-            .map(|(x, z, y)| {
+        let blocks = iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2)
+            .map(|(x, y, z)| {
                 let tile_pos = ivec3(x as _, y as _, z as _);
                 let tile_pos_worldspace = (tile_pos + (world_pos * CHUNK_SIZE.0 as i32)).as_vec3();
 
@@ -429,6 +434,7 @@ impl Chunk {
     }
 
     pub fn load(map_pos: IVec3) -> Result<Chunk, Box<dyn std::error::Error>> {
+        return Ok(Chunk::generate(map_pos, ChunkScramble::Normal));
         #[cfg(not(target_arch = "wasm32"))]
         let cached = CHUNK_FILE_CACHE.lock().unwrap().contains_key(&map_pos);
         #[cfg(target_arch = "wasm32")]
@@ -498,6 +504,70 @@ impl Chunk {
         //     .await?
         //     .materials,
         // })
+    }
+
+    pub fn primitive_model(
+        &self,
+        (cx, cy, cz): (i32, i32, i32),
+        device: &Device,
+        material: &Arc<Vec<Material>>,
+    ) -> Option<Model> {
+        let mut mesh = PrimitiveMeshBuilder::new();
+
+        for (x, y, z) in iproduct!(0..Chunk::X, 0..Chunk::Y, 0..Chunk::Z) {
+            match self.get(x, y, z) {
+                BlockKind::Air => continue,
+                BlockKind::Brick => {
+                    let faces = [
+                        IVec3::NEG_Z,
+                        IVec3::Z,
+                        IVec3::NEG_Y,
+                        IVec3::Y,
+                        IVec3::NEG_X,
+                        IVec3::X,
+                    ]
+                    .map(
+                        |IVec3 {
+                             x: nx,
+                             y: ny,
+                             z: nz,
+                         }| {
+                            matches!(
+                                self.get_opt(
+                                    (x as i32 + nx) as usize,
+                                    (y as i32 + ny) as usize,
+                                    (z as i32 + nz) as usize
+                                ),
+                                Some(BlockKind::Brick)
+                            )
+                        },
+                    );
+                    let faces = Faces::from_arr(faces);
+
+                    // let back = matches!(
+                    //     self.get_opt(
+                    //         (x as i32) as usize,
+                    //         (y as i32) as usize,
+                    //         (z as i32 + 1) as usize
+                    //     ),
+                    //     Some(BlockKind::Brick)
+                    // );
+                    // let faces = Faces { back, ..Faces::ALL };
+
+                    mesh = mesh.cube(
+                        Faces::ALL,
+                        (cx as f32 * 2.0 * Chunk::X as f32) + x as f32 * 2.,
+                        (cy as f32 * 2.0 * Chunk::Y as f32) + y as f32 * 2.,
+                        (cz as f32 * 2.0 * Chunk::Z as f32) + z as f32 * 2.,
+                    );
+                }
+            }
+        }
+        if let Some(mesh) = mesh.build(device, material) {
+            Some(mesh.model)
+        } else {
+            None
+        }
     }
 }
 

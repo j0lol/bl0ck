@@ -4,6 +4,7 @@ use crate::gfx::texture::Texture;
 use cfg_if::cfg_if;
 use std::error::Error;
 use std::io::{BufReader, Cursor};
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use wgpu::{BindGroupLayout, Device, Queue};
 
@@ -250,5 +251,8 @@ pub async fn load_model(
         .map(|m| m.mesh(device, m.mesh.material_id.unwrap_or(0)))
         .collect();
 
-    Ok(model::Model { meshes, materials })
+    Ok(model::Model {
+        meshes,
+        materials: Arc::new(materials),
+    })
 }

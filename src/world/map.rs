@@ -1,4 +1,4 @@
-use super::chunk::Chunk;
+use super::chunk::{Chunk, TEST_CHUNK};
 use bincode::{Decode, Encode};
 use glam::ivec3;
 #[cfg(not(target_arch = "wasm32"))]
@@ -30,7 +30,7 @@ impl Distribution<BlockKind> for StandardUniform {
 pub struct WorldMap {
     pub chunks: RollGrid3D<Chunk>,
 }
-pub(crate) const RENDER_GRID_SIZE: usize = 3;
+pub(crate) const RENDER_GRID_SIZE: usize = 5;
 pub fn new() -> WorldMap {
     WorldMap {
         chunks: RollGrid3D::new(
@@ -41,6 +41,7 @@ pub fn new() -> WorldMap {
             ),
             (0, 0, 0),
             |(x, y, z)| Chunk::load(ivec3(x, y, z)).unwrap(),
+            // |(x, y, z)| TEST_CHUNK(),
         ),
     }
 }

@@ -1,9 +1,12 @@
 // TODO CITE https://github.com/whoisryosuke/wgpu-hello-world/blob/play/primitives-model-test/src/primitives/mod.rs
 
-use crate::gfx::model::ModelVertex;
+use crate::gfx::model::{Material, ModelVertex};
 use crate::gfx::primitive::cube::{cube_indices, cube_vertices, Faces};
 use crate::gfx::resources::load_texture;
+use crate::gfx::texture::Texture;
 use crate::gfx::{model, primitive};
+use std::rc::Rc;
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use wgpu::{Device, Queue};
 
@@ -13,12 +16,12 @@ pub(crate) mod cube {
 
     #[derive(Copy, Clone, Default)]
     pub struct Faces {
-        front: bool,
-        back: bool,
-        top: bool,
-        bottom: bool,
-        right: bool,
-        left: bool,
+        pub front: bool,
+        pub back: bool,
+        pub top: bool,
+        pub bottom: bool,
+        pub right: bool,
+        pub left: bool,
     }
     impl Faces {
         pub(crate) const ALL: Faces = Faces {
@@ -29,7 +32,7 @@ pub(crate) mod cube {
             right: true,
             left: true,
         };
-        const NONE: Faces = Faces {
+        pub(crate) const NONE: Faces = Faces {
             front: false,
             back: false,
             top: false,
@@ -49,6 +52,19 @@ pub(crate) mod cube {
             }: Self,
         ) -> [bool; 6] {
             [front, back, top, bottom, left, right]
+        }
+        pub(crate) fn from_arr(arr: [bool; 6]) -> Faces {
+            let [front, back, top, bottom, left, right] = arr[0..6] else {
+                unreachable!()
+            };
+            Faces {
+                front,
+                back,
+                top,
+                bottom,
+                left,
+                right,
+            }
         }
     }
 
@@ -103,22 +119,22 @@ pub(crate) mod cube {
             ModelVertex {
                 position: [N, P, N],
                 normal: [P, 0.0, 0.0],
-                tex_coords: [0.0, 0.5],
+                tex_coords: [0.875000, 0.750000],
             },
             ModelVertex {
                 position: [N, P, P],
                 normal: [N, 0.0, 0.0],
-                tex_coords: [0.0, 0.5],
+                tex_coords: [0.625000, 0.750000],
             },
             ModelVertex {
                 position: [P, P, P],
                 normal: [0.0, P, 0.0],
-                tex_coords: [0.0, 0.5],
+                tex_coords: [0.625000, 0.500000],
             },
             ModelVertex {
                 position: [P, P, N],
                 normal: [0.0, N, 0.0],
-                tex_coords: [0.0, 0.5],
+                tex_coords: [0.875000, 0.500000],
             },
         ];
         let bottom = vec![
@@ -291,7 +307,10 @@ impl PrimitiveMesh {
             material: 0,
         });
 
-        let model = model::Model { meshes, materials };
+        let model = model::Model {
+            meshes,
+            materials: Arc::new(materials),
+        };
 
         Self { model }
     }
@@ -319,40 +338,37 @@ impl PrimitiveMeshBuilder {
         self
     }
 
-    pub async fn build(
-        self,
-        device: &Device,
-        queue: &Queue,
-        layout: &wgpu::BindGroupLayout,
-    ) -> Option<PrimitiveMesh> {
+    pub fn build(self, device: &Device, materials: &Arc<Vec<Material>>) -> Option<PrimitiveMesh> {
         if self.objects == 0 {
             return None;
         }
 
-        let mut materials = Vec::new();
-        let diffuse_texture = load_texture(String::from("cat_face.png"), device, queue)
-            .await
-            .expect("Couldn't load placeholder texture for primitive");
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                },
-            ],
-            label: None,
-        });
+        // let mut materials = Vec::new();
+        // let diffuse_texture = load_texture(String::from("cat_face.png"), device, queue)
+        //     .await
+        //     .expect("Couldn't load placeholder texture for primitive");
+        // let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        //     layout,
+        //     entries: &[
+        //         wgpu::BindGroupEntry {
+        //             binding: 0,
+        //             resource: wgpu::BindingResource::TextureView(
+        //                 &materials[0].diffuse_texture.view,
+        //             ),
+        //         },
+        //         wgpu::BindGroupEntry {
+        //             binding: 1,
+        //             resource: wgpu::BindingResource::Sampler(&materials[0].diffuse_texture.sampler),
+        //         },
+        //     ],
+        //     label: None,
+        // });
 
-        materials.push(model::Material {
-            name: "Primitive".to_string(),
-            diffuse_texture,
-            bind_group,
-        });
+        // materials.push(model::Material {
+        //     name: "Primitive".to_string(),
+        //     &materials[0].diffuse_texture,
+        //     bind_group,
+        // });
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&"Primitive Vertex Buffer".to_string()),
@@ -374,7 +390,10 @@ impl PrimitiveMeshBuilder {
             material: 0,
         });
 
-        let model = model::Model { meshes, materials };
+        let model = model::Model {
+            meshes,
+            materials: materials.clone(),
+        };
 
         Some(PrimitiveMesh { model })
     }
