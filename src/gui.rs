@@ -178,7 +178,7 @@ impl EguiRenderer {
                 //             .model
                 //             .meshes
                 //             .iter()
-                //             .map(|x| x.num_elements)
+                //             .map(|front| front.num_elements)
                 //             .sum::<u32>()
                 // ));
 
@@ -261,7 +261,7 @@ impl EguiRenderer {
                             .speed(0.1)
                             .update_while_editing(false),
                     );
-                    ui.label("x ");
+                    ui.label("front ");
 
                     ui.add_enabled(
                         !camera_load,
@@ -284,7 +284,7 @@ impl EguiRenderer {
                 ui.horizontal(|ui| {
                     ui.label("Scramble chunk at...");
                     ui.add(egui::DragValue::new(&mut chunk_x).speed(0.1));
-                    ui.label("x ");
+                    ui.label("front ");
 
                     ui.add(egui::DragValue::new(&mut chunk_y).speed(0.1));
                     ui.label("y ");

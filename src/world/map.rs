@@ -41,7 +41,6 @@ pub fn new() -> WorldMap {
             ),
             (0, 0, 0),
             |(x, y, z)| Chunk::load(ivec3(x, y, z)).unwrap(),
-            // |(x, y, z)| TEST_CHUNK(),
         ),
     }
 }

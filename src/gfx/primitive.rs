@@ -12,9 +12,10 @@ use wgpu::{Device, Queue};
 
 pub(crate) mod cube {
     use crate::gfx::model::ModelVertex;
+    use glam::{IVec3, Vec3};
     use itertools::Itertools;
 
-    #[derive(Copy, Clone, Default)]
+    #[derive(Copy, Clone, Default, Debug)]
     pub struct Faces {
         pub front: bool,
         pub back: bool,
@@ -41,6 +42,17 @@ pub(crate) mod cube {
             left: false,
         };
 
+        /// Right handed coordinate system with y-up
+        pub fn normals() -> [IVec3; 6] {
+            [
+                IVec3::Z,     // this should be the other way around
+                IVec3::NEG_Z, // but it works. so
+                IVec3::Y,
+                IVec3::NEG_Y,
+                IVec3::X,
+                IVec3::NEG_X,
+            ]
+        }
         fn arr(
             Faces {
                 front,
@@ -51,10 +63,10 @@ pub(crate) mod cube {
                 left,
             }: Self,
         ) -> [bool; 6] {
-            [front, back, top, bottom, left, right]
+            [front, back, top, bottom, right, left]
         }
         pub(crate) fn from_arr(arr: [bool; 6]) -> Faces {
-            let [front, back, top, bottom, left, right] = arr[0..6] else {
+            let [front, back, top, bottom, right, left] = arr[0..6] else {
                 unreachable!()
             };
             Faces {
@@ -62,8 +74,8 @@ pub(crate) mod cube {
                 back,
                 top,
                 bottom,
-                left,
                 right,
+                left,
             }
         }
     }
@@ -204,10 +216,8 @@ pub(crate) mod cube {
             },
         ];
 
-        Faces::arr(faces)
-            .iter()
-            .zip([front, back, top, bottom, right, left])
-            .filter_map(|(face, x)| face.then_some(x))
+        [front, back, top, bottom, right, left]
+            .into_iter()
             .flatten()
             .map(|mut vertex| {
                 vertex.position = [
@@ -225,21 +235,40 @@ pub(crate) mod cube {
             .collect_vec()
     }
 
-    pub fn cube_indices(n: u32, faces: Faces) -> Vec<u32> {
-        let vertices_count = cube_vertices(faces, 0., (0., 0., 0.)).len() as u32;
-        let front = vec![0, 1, 2, 0, 2, 3];
-        let back = vec![4, 5, 6, 4, 6, 7];
-        let top = vec![8, 9, 10, 8, 10, 11];
-        let bottom = vec![12, 13, 14, 12, 14, 15];
-        let right = vec![16, 17, 18, 16, 18, 19];
-        let left = vec![20, 21, 22, 20, 22, 23];
+    pub fn cube_indices(cube_index: u32, faces: Faces) -> Vec<u32> {
+        let vertices_count = cube_vertices(faces, 1., (0., 0., 0.)).len() as u32;
 
-        Faces::arr(faces)
+        const VERTICES_PER_INDICES: u32 = 4;
+        let face_indices = [0, 1, 2, 0, 2, 3];
+        let mut all_indices = vec![];
+        for (i, face) in Faces::arr(faces).iter().enumerate() {
+            let indices = face_indices.map(|n| n + (i as u32 * VERTICES_PER_INDICES));
+
+            if *face {
+                all_indices.push(indices);
+            }
+        }
+
+        // let front = vec![0, 1, 2, 0, 2, 3];
+        // let back = vec![4, 5, 6, 4, 6, 7];
+        // let top = vec![8, 9, 10, 8, 10, 11];
+        // let bottom = vec![12, 13, 14, 12, 14, 15];
+        // let right = vec![16, 17, 18, 16, 18, 19];
+        // let left = vec![20, 21, 22, 20, 22, 23];
+        //
+        // Faces::arr(faces)
+        //     .iter()
+        //     .zip([front, back, top, bottom, right, left])
+        //     .filter_map(|(face, front)| face.then_some(front))
+        //     .flatten()
+        //     .map(|i| i + (n * vertices_count))
+        //     .collect_vec()
+
+        all_indices
             .iter()
-            .zip([front, back, top, bottom, right, left])
-            .filter_map(|(face, x)| face.then_some(x))
             .flatten()
-            .map(|i| i + (n * vertices_count))
+            .copied()
+            .map(|i| i + (cube_index * vertices_count))
             .collect_vec()
     }
 }

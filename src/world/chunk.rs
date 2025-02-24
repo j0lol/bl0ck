@@ -22,7 +22,7 @@ use wgpu::Device;
 static CHUNK_FILE_CACHE: LazyLock<Mutex<HashMap<IVec3, Chunk>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-// I have arbitrarily decided that this is (x,z,y) where +y is up.
+// I have arbitrarily decided that this is (front,z,y) where +y is up.
 pub(crate) const CHUNK_SIZE: (usize, usize, usize) = (16, 16, 16);
 
 // A [Block; X*Y*Z] would be a much more efficient datatype, but, well...
@@ -31,23 +31,32 @@ pub type Slice3 = [BlockKind; CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2];
 pub const FULL_CHUNK: Chunk = Chunk {
     blocks: [BlockKind::Brick; CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2],
 };
-pub const HALF_CHUNK: fn() -> Chunk = || Chunk {
-    blocks: {
-        let air = [BlockKind::Air; (CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2) / 2];
-        let brick = [BlockKind::Brick; (CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2) / 2];
-        [air, brick]
-            .into_iter()
-            .flat_map(|s| s.into_iter())
-            .collect_vec()
-            .try_into()
-            .unwrap()
-    },
+pub const HALF_CHUNK: fn() -> Chunk = || {
+    let mut blocks = [BlockKind::Air; CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2];
+
+    let block = |b| if b { BlockKind::Brick } else { BlockKind::Air };
+    for (x, y, z) in iproduct!(0..CHUNK_SIZE.0, 10..CHUNK_SIZE.1, 0..CHUNK_SIZE.2) {
+        blocks[Chunk::linearize(x, y, z).unwrap()] =
+            block(f32::sin(x as f32) + f32::sin(z as f32) > 0.7);
+    }
+    Chunk { blocks }
 };
 
 pub const TEST_CHUNK: fn() -> Chunk = || {
     let mut blocks = [BlockKind::Air; CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2];
-    blocks[Chunk::linearize(12, 12, 12)] = BlockKind::Brick;
-    blocks[Chunk::linearize(12, 13, 12)] = BlockKind::Brick;
+
+    // blocks[Chunk::linearize(10, 10, 10)] = BlockKind::Brick;
+    // blocks[Chunk::linearize(6, 6, 6)] = BlockKind::Brick;
+    // blocks[Chunk::linearize(6, 7, 6)] = BlockKind::Brick;
+    //
+    // blocks[Chunk::linearize(4, 2, 2)] = BlockKind::Brick;
+    // blocks[Chunk::linearize(3, 2, 2)] = BlockKind::Brick;
+    // blocks[Chunk::linearize(2, 2, 2)] = BlockKind::Brick;
+    //
+    // blocks[Chunk::linearize(2, 2, 8)] = BlockKind::Brick;
+    // blocks[Chunk::linearize(2, 2, 9)] = BlockKind::Brick;
+    // blocks[Chunk::linearize(2, 2, 10)] = BlockKind::Brick;
+    // blocks[Chunk::linearize(2, 2, 11)] = BlockKind::Brick;
 
     Chunk { blocks }
 };
@@ -69,8 +78,12 @@ pub trait ChunkTrait {
         Self::X * Self::Y * Self::Z
     }
 
-    fn linearize(x: usize, y: usize, z: usize) -> usize {
-        x + (y * Self::X) + (z * Self::X * Self::Y)
+    fn linearize(x: usize, y: usize, z: usize) -> Option<usize> {
+        if (x > Self::X) || (y > Self::Y) || (z > Self::Z) {
+            None
+        } else {
+            Some(x + (y * Self::X) + (z * Self::X * Self::Y))
+        }
     }
 
     fn delinearize(mut index: usize) -> (usize, usize, usize) {
@@ -245,10 +258,10 @@ impl ChunkTrait for Chunk {
     const Z: usize = 16;
 
     fn get(&self, x: usize, y: usize, z: usize) -> Self::Node {
-        self.blocks[Chunk::linearize(x, y, z)]
+        self.blocks[Chunk::linearize(x, y, z).unwrap()]
     }
     fn get_opt(&self, x: usize, y: usize, z: usize) -> Option<Self::Node> {
-        self.blocks.get(Chunk::linearize(x, y, z)).copied()
+        self.blocks.get(Chunk::linearize(x, y, z)?).copied()
     }
 }
 
@@ -434,7 +447,9 @@ impl Chunk {
     }
 
     pub fn load(map_pos: IVec3) -> Result<Chunk, Box<dyn std::error::Error>> {
-        return Ok(Chunk::generate(map_pos, ChunkScramble::Normal));
+        // return Ok(Chunk::generate(map_pos, ChunkScramble::Normal));
+        return Ok(HALF_CHUNK());
+
         #[cfg(not(target_arch = "wasm32"))]
         let cached = CHUNK_FILE_CACHE.lock().unwrap().contains_key(&map_pos);
         #[cfg(target_arch = "wasm32")]
@@ -518,47 +533,37 @@ impl Chunk {
             match self.get(x, y, z) {
                 BlockKind::Air => continue,
                 BlockKind::Brick => {
-                    let faces = [
-                        IVec3::NEG_Z,
-                        IVec3::Z,
-                        IVec3::NEG_Y,
-                        IVec3::Y,
-                        IVec3::NEG_X,
-                        IVec3::X,
-                    ]
-                    .map(
+                    let faces = Faces::normals().map(
                         |IVec3 {
                              x: nx,
                              y: ny,
                              z: nz,
                          }| {
-                            matches!(
-                                self.get_opt(
-                                    (x as i32 + nx) as usize,
-                                    (y as i32 + ny) as usize,
-                                    (z as i32 + nz) as usize
-                                ),
-                                Some(BlockKind::Brick)
-                            )
+                            match self.get_opt(
+                                (x as i32 + nx) as usize,
+                                (y as i32 + ny) as usize,
+                                (z as i32 + nz) as usize,
+                            ) {
+                                None => {
+                                    //dbg!("oob!");
+                                    true
+                                }
+                                Some(BlockKind::Brick) => false,
+                                Some(BlockKind::Air) => true,
+                            }
                         },
                     );
                     let faces = Faces::from_arr(faces);
 
-                    // let back = matches!(
-                    //     self.get_opt(
-                    //         (x as i32) as usize,
-                    //         (y as i32) as usize,
-                    //         (z as i32 + 1) as usize
-                    //     ),
-                    //     Some(BlockKind::Brick)
-                    // );
-                    // let faces = Faces { back, ..Faces::ALL };
+                    let offset = |x: usize, cx: i32, max: usize| {
+                        (cx as f32 * 2.0 * max as f32) + x as f32 * 2.
+                    };
 
                     mesh = mesh.cube(
-                        Faces::ALL,
-                        (cx as f32 * 2.0 * Chunk::X as f32) + x as f32 * 2.,
-                        (cy as f32 * 2.0 * Chunk::Y as f32) + y as f32 * 2.,
-                        (cz as f32 * 2.0 * Chunk::Z as f32) + z as f32 * 2.,
+                        faces,
+                        offset(x, cx, Chunk::X),
+                        offset(y, cy, Chunk::Y),
+                        offset(z, cz, Chunk::Z),
                     );
                 }
             }
@@ -683,12 +688,12 @@ mod tests {
         let chunk = Chunk::generate_normal((0, 0, 0).into());
 
         // for i in 0..Chunk::size() {
-        //     let (x, y, z) = Chunk::delinearize(i);
+        //     let (front, y, z) = Chunk::delinearize(i);
         //
-        //     let voxel = if ((x * x + y * y + z * z) as f32).sqrt() < 8.0 {
+        //     let voxel = if ((front * front + y * y + z * z) as f32).sqrt() < 8.0 {
         //         if y > 4 {
         //             MyVoxel::Opaque(1)
-        //         } else if x > 4 {
+        //         } else if front > 4 {
         //             MyVoxel::Transparent(1)
         //         } else {
         //             MyVoxel::Opaque(2)
