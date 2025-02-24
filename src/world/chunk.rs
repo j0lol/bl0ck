@@ -330,28 +330,26 @@ impl Voxel for BlockKind {
 
 impl Chunk {
     fn generate_normal(world_pos: IVec3) -> Chunk {
-        let blocks = iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2)
-            .map(|(x, y, z)| {
-                let tile_pos = ivec3(x as _, y as _, z as _);
-                let tile_pos_worldspace = (tile_pos + (world_pos * CHUNK_SIZE.0 as i32)).as_vec3();
+        let mut blocks = vec![];
+        for (x, y, z) in iproduct!(0..CHUNK_SIZE.0, 0..CHUNK_SIZE.1, 0..CHUNK_SIZE.2) {
+            let tile_pos = ivec3(x as _, y as _, z as _);
+            let tile_pos_worldspace = (tile_pos + (world_pos * CHUNK_SIZE.0 as i32)).as_vec3();
 
-                let sines =
-                    f32::sin(tile_pos_worldspace.x * 0.1) + f32::sin(tile_pos_worldspace.z * 0.1);
+            // let sines =
+            //     f32::sin(tile_pos_worldspace.x * 0.1) + f32::sin(tile_pos_worldspace.z * 0.1);
+            //
+            // // Pretty arbitrary numbers! Just trying to get something interesting
+            // let n = (((sines / 4. + 0.5) * CHUNK_SIZE.2 as f32).round() as i32)
+            //     <= -tile_pos_worldspace.y as _;
 
-                // Pretty arbitrary numbers! Just trying to get something interesting
-                let n = (((sines / 4. + 0.5) * CHUNK_SIZE.2 as f32).round() as i32)
-                    <= -tile_pos_worldspace.y as _;
+            let n = (tile_pos_worldspace.y < 10.0);
 
-                if n {
-                    BlockKind::Brick
-                } else {
-                    BlockKind::Air
-                }
-            })
-            .collect_array()
-            .unwrap();
+            blocks.push(if n { BlockKind::Brick } else { BlockKind::Air });
+        }
 
-        Chunk { blocks }
+        Chunk {
+            blocks: blocks.into_iter().collect_array().unwrap(),
+        }
     }
 
     fn generate_callback(method: ChunkScramble) -> fn(IVec3) -> Chunk {
@@ -448,7 +446,7 @@ impl Chunk {
 
     pub fn load(map_pos: IVec3) -> Result<Chunk, Box<dyn std::error::Error>> {
         // return Ok(Chunk::generate(map_pos, ChunkScramble::Normal));
-        return Ok(HALF_CHUNK());
+        // return Ok(HALF_CHUNK());
 
         #[cfg(not(target_arch = "wasm32"))]
         let cached = CHUNK_FILE_CACHE.lock().unwrap().contains_key(&map_pos);
