@@ -80,17 +80,6 @@ impl ApplicationHandler<Gfx> for Application {
         self.window = Some(window);
     }
 
-    fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
-        if let (MaybeGfx::Graphics(gfx), DeviceEvent::MouseMotion { delta }) =
-            (&mut self.gfx_state, event)
-        {
-            if gfx.camera.mouse_focused {
-                gfx.camera
-                    .controller
-                    .process_mouse(dvec2(delta.0, delta.1).as_vec2())
-            }
-        }
-    }
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, gfx: Gfx) {
         if let Some(window) = &self.window {
             let egui = EguiRenderer::new(&gfx.device, gfx.surface_config.format, None, 1, window);
@@ -98,7 +87,6 @@ impl ApplicationHandler<Gfx> for Application {
         }
         self.gfx_state = MaybeGfx::Graphics(gfx);
     }
-
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -228,6 +216,18 @@ impl ApplicationHandler<Gfx> for Application {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
+        if let (MaybeGfx::Graphics(gfx), DeviceEvent::MouseMotion { delta }) =
+            (&mut self.gfx_state, event)
+        {
+            if gfx.camera.mouse_focused {
+                gfx.camera
+                    .controller
+                    .process_mouse(dvec2(delta.0, delta.1).as_vec2())
+            }
         }
     }
 }

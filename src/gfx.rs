@@ -11,7 +11,7 @@ use crate::gfx::primitive::cube::Faces;
 use crate::gfx::primitive::PrimitiveMeshBuilder;
 use crate::gfx::resources::load_model;
 use crate::world::chunk::{
-    side_lookup, simple_mesh, Chunk, ChunkScramble, ChunkTrait, Face, Quad, QuadGroups, CHUNK_SIZE,
+    side_lookup, Chunk, ChunkScramble, ChunkTrait, Face, Quad, QuadGroups, CHUNK_SIZE,
 };
 use crate::world::chunk::{FULL_CHUNK, HALF_CHUNK};
 use crate::{

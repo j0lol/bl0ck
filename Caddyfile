@@ -1,0 +1,7 @@
+localhost {
+    header Access-Control-Allow-Origin https://localhost
+	header Cross-Origin-Opener-Policy same-origin
+	header Cross-Origin-Embedder-Policy require-corp
+
+	file_server browse
+}

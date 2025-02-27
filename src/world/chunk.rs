@@ -1,11 +1,10 @@
 use super::map::BlockKind;
-use crate::gfx::model::{Material, Mesh, Model, ModelVertex};
+use crate::gfx::model::{Material, Model};
 use crate::gfx::primitive::cube::Faces;
 use crate::gfx::primitive::PrimitiveMeshBuilder;
 use crate::gfx::resources::ProcessingModel;
 use bincode::{Decode, Encode};
-use futures::StreamExt;
-use glam::{ivec3, vec3, I8Vec3, IVec3, Vec2, Vec3};
+use glam::{ivec3, IVec3, Vec2, Vec3};
 use itertools::{iproduct, Itertools};
 use std::sync::{Arc, Mutex};
 use std::{
@@ -15,7 +14,6 @@ use std::{
     path::Path,
     sync::LazyLock,
 };
-use wgpu::util::DeviceExt;
 use wgpu::Device;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -43,7 +41,7 @@ pub const HALF_CHUNK: fn() -> Chunk = || {
 };
 
 pub const TEST_CHUNK: fn() -> Chunk = || {
-    let mut blocks = [BlockKind::Air; CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2];
+    let blocks = [BlockKind::Air; CHUNK_SIZE.0 * CHUNK_SIZE.1 * CHUNK_SIZE.2];
 
     // blocks[Chunk::linearize(10, 10, 10)] = BlockKind::Brick;
     // blocks[Chunk::linearize(6, 6, 6)] = BlockKind::Brick;
@@ -265,63 +263,6 @@ impl ChunkTrait for Chunk {
     }
 }
 
-pub fn generate_mesh<C, T>(chunk: &C) -> QuadGroups
-where
-    C: ChunkTrait<Node = T>,
-    T: Voxel,
-{
-    todo!()
-}
-
-pub fn simple_mesh<C, T>(chunk: &C) -> QuadGroups
-where
-    C: ChunkTrait<Node = T>,
-    T: Voxel,
-{
-    assert!(C::X >= 2);
-    assert!(C::Y >= 2);
-    assert!(C::Z >= 2);
-
-    let mut buffer = QuadGroups::default();
-
-    for i in 0..C::size() {
-        let (x, y, z) = C::delinearize(i);
-
-        if (x > 0 && x < C::X - 1) && (y > 0 && y < C::Y - 1) && (z > 0 && z < C::Z - 1) {
-            let voxel = chunk.get(x, y, z);
-
-            if voxel.visibility() {
-                let neighbors = [
-                    chunk.get(x - 1, y, z),
-                    chunk.get(x + 1, y, z),
-                    chunk.get(x, y - 1, z),
-                    chunk.get(x, y + 1, z),
-                    chunk.get(x, y, z - 1),
-                    chunk.get(x, y, z + 1),
-                ];
-
-                for (i, neighbor) in neighbors.into_iter().enumerate() {
-                    let other = neighbor.visibility();
-
-                    let generate = !other;
-
-                    if generate {
-                        buffer.groups[i].push(Quad {
-                            voxel: [x, y, z],
-                            width: 1,
-                            height: 1,
-                        });
-                    }
-                }
-            } else {
-                continue;
-            }
-        }
-    }
-
-    buffer
-}
-
 impl Voxel for BlockKind {
     fn visibility(&self) -> bool {
         *self == BlockKind::Brick
@@ -342,7 +283,7 @@ impl Chunk {
             // let n = (((sines / 4. + 0.5) * CHUNK_SIZE.2 as f32).round() as i32)
             //     <= -tile_pos_worldspace.y as _;
 
-            let n = (tile_pos_worldspace.y < 10.0);
+            let n = tile_pos_worldspace.y < 10.0;
 
             blocks.push(if n { BlockKind::Brick } else { BlockKind::Air });
         }
@@ -475,50 +416,6 @@ impl Chunk {
         }
     }
 
-    fn build_mesh(&self, device: &wgpu::Device) -> Result<Mesh, Box<dyn std::error::Error>> {
-        let quad_groups = simple_mesh(self);
-
-        Ok(quad_groups.mesh(device, 0))
-    }
-
-    pub async fn model(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        tex_bgl: &wgpu::BindGroupLayout,
-    ) -> Result<Model, Box<dyn std::error::Error>> {
-        let mesh = simple_mesh(self);
-        let vertices = mesh.positions();
-        let indices = mesh.indices();
-
-        let mut vertices = vec![];
-        for face in mesh.iter() {
-            let vertex = ModelVertex {
-                position: face.side.into(),
-                normal: face.normals()[0].into(),
-                tex_coords: face.uvs(false, true)[0].into(),
-            };
-            vertices.push(vertex);
-        }
-
-        Ok(crate::gfx::primitive::PrimitiveMesh::new(
-            device, &queue, &tex_bgl, &*vertices, &indices,
-        )
-        .await
-        .model)
-        // Ok(Model {
-        //     meshes: vec![self.build_mesh(device)?],
-        //     materials: crate::gfx::resources::load_model(
-        //         "blender_default_cube.obj",
-        //         &device,
-        //         &queue,
-        //         &tex_bgl,
-        //     )
-        //     .await?
-        //     .materials,
-        // })
-    }
-
     pub fn primitive_model(
         &self,
         (cx, cy, cz): (i32, i32, i32),
@@ -589,7 +486,7 @@ pub fn preload_chunk_cache() {
     {
         // range
         let r: i32 = 8; // normally 8 or so
-        let _3diter = itertools::iproduct!(-r..r, -r..r, -r..r);
+        let _3diter = iproduct!(-r..r, -r..r, -r..r);
 
         for (x, y, z) in _3diter {
             let _ = Chunk::load(ivec3(x, y, z));
@@ -628,143 +525,5 @@ impl ProcessingModel for QuadGroups {
 
 #[cfg(test)]
 mod tests {
-    use wgpu::util::DeviceExt;
     // Note this useful idiom: importing names from outer (for mod tests) scope.
-    use super::*;
-
-    #[test]
-    fn test_chunk_meshing() {
-        // Handle to our GPU backends
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            #[cfg(not(target_arch = "wasm32"))]
-            backends: wgpu::Backends::PRIMARY,
-
-            // WebGPU is sadly not supported in most browsers (yet!)
-            #[cfg(target_arch = "wasm32")]
-            backends: wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL,
-
-            ..Default::default()
-        });
-
-        let adapter = pollster::block_on(async {
-            instance
-                .request_adapter(&wgpu::RequestAdapterOptions {
-                    // lo-power or hi-perf
-                    power_preference: wgpu::PowerPreference::default(),
-                    compatible_surface: None,
-                    force_fallback_adapter: false,
-                })
-                .await
-                .unwrap()
-        });
-
-        let (device, queue) = pollster::block_on(async {
-            adapter
-                .request_device(
-                    &wgpu::DeviceDescriptor {
-                        required_features: if adapter.get_info().backend == wgpu::Backend::Gl {
-                            wgpu::Features::empty()
-                        } else {
-                            wgpu::Features::POLYGON_MODE_LINE
-                        },
-
-                        // WebGL does not support all of wgpu's features
-                        required_limits: if adapter.get_info().backend == wgpu::Backend::Gl {
-                            wgpu::Limits::downlevel_webgl2_defaults()
-                        } else {
-                            wgpu::Limits::default()
-                        },
-                        label: None,
-                        memory_hints: Default::default(),
-                    },
-                    None,
-                )
-                .await
-                .unwrap()
-        });
-
-        let chunk = Chunk::generate_normal((0, 0, 0).into());
-
-        // for i in 0..Chunk::size() {
-        //     let (front, y, z) = Chunk::delinearize(i);
-        //
-        //     let voxel = if ((front * front + y * y + z * z) as f32).sqrt() < 8.0 {
-        //         if y > 4 {
-        //             MyVoxel::Opaque(1)
-        //         } else if front > 4 {
-        //             MyVoxel::Transparent(1)
-        //         } else {
-        //             MyVoxel::Opaque(2)
-        //         }
-        //     } else {
-        //         MyVoxel::Empty
-        //     };
-        //
-        //     chunk.voxels[i] = voxel;
-        // }
-
-        let result = simple_mesh(&chunk);
-
-        let mut positions: Vec<[f32; 3]> = Vec::new();
-        let mut indices = Vec::new();
-        let mut normals: Vec<[f32; 3]> = Vec::new();
-        let mut uvs = Vec::new();
-
-        for face in result.iter() {
-            positions.extend_from_slice(&face.positions(1.0).map(|x| x.into())); // Voxel size is 1m
-            indices.extend_from_slice(&face.indices(positions.len() as u32));
-            normals.extend_from_slice(&face.normals().map(|x| x.into()));
-            uvs.extend_from_slice(&face.uvs(false, true));
-        }
-
-        /*        let vertex = ModelVertex {
-            positions: positions,
-            normals: normals.as_slice(),
-        }*/
-
-        // let vertices = (0..m.mesh.positions.len() / 3)
-        //     .map(|i| crate::gfx::model::ModelVertex {
-        //         position: positions,
-        //         tex_coords: [m.mesh.texcoords[i * 2], 1.0 - m.mesh.texcoords[i * 2 + 1]],
-        //         normal: normals,
-        //     })
-        //     .collect::<Vec<_>>();
-
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(&positions),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(&indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        let _ = crate::gfx::model::Mesh {
-            name: "".to_string(),
-            vertex_buffer,
-            index_buffer,
-            num_elements: indices.len() as u32,
-            material: 0,
-        };
-
-        // let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
-        //
-        // mesh.set_indices(Some(Indices::U32(indices)));
-        //
-        // mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-        // mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-        // mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    }
-
-    #[test]
-    fn chunk_get() {
-        let chunk = HALF_CHUNK();
-
-        assert_eq!(chunk.get(0, 0, 0), BlockKind::Air);
-
-        dbg!(simple_mesh(&chunk));
-    }
 }

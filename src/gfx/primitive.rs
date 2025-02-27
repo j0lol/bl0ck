@@ -1,18 +1,16 @@
 // TODO CITE https://github.com/whoisryosuke/wgpu-hello-world/blob/play/primitives-model-test/src/primitives/mod.rs
 
+use crate::gfx::model;
 use crate::gfx::model::{Material, ModelVertex};
 use crate::gfx::primitive::cube::{cube_indices, cube_vertices, Faces};
 use crate::gfx::resources::load_texture;
-use crate::gfx::texture::Texture;
-use crate::gfx::{model, primitive};
-use std::rc::Rc;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
-use wgpu::{Device, Queue};
+use wgpu::Device;
 
 pub(crate) mod cube {
     use crate::gfx::model::ModelVertex;
-    use glam::{IVec3, Vec3};
+    use glam::IVec3;
     use itertools::Itertools;
 
     #[derive(Copy, Clone, Default, Debug)]
@@ -80,7 +78,7 @@ pub(crate) mod cube {
         }
     }
 
-    pub fn cube_vertices(faces: Faces, scale: f32, (x, y, z): (f32, f32, f32)) -> Vec<ModelVertex> {
+    pub fn cube_vertices(scale: f32, (x, y, z): (f32, f32, f32)) -> Vec<ModelVertex> {
         const P: f32 = 1.0;
         const N: f32 = -1.0;
         let front = vec![
@@ -236,7 +234,7 @@ pub(crate) mod cube {
     }
 
     pub fn cube_indices(cube_index: u32, faces: Faces) -> Vec<u32> {
-        let vertices_count = cube_vertices(faces, 1., (0., 0., 0.)).len() as u32;
+        let vertices_count = cube_vertices(1., (0., 0., 0.)).len() as u32;
 
         const VERTICES_PER_INDICES: u32 = 4;
         let face_indices = [0, 1, 2, 0, 2, 3];
@@ -360,8 +358,7 @@ impl PrimitiveMeshBuilder {
         }
     }
     pub fn cube(mut self, faces: Faces, x: f32, y: f32, z: f32) -> Self {
-        self.vertices
-            .append(&mut cube_vertices(faces, 1.0, (x, y, z)));
+        self.vertices.append(&mut cube_vertices(1.0, (x, y, z)));
         self.indices.append(&mut cube_indices(self.objects, faces));
         self.objects += 1;
         self
