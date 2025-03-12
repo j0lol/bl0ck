@@ -12,6 +12,114 @@ pub(crate) mod cube {
     use crate::gfx::model::ModelVertex;
     use glam::IVec3;
     use itertools::Itertools;
+    use std::collections::HashMap;
+
+    struct CubeObj<const V: usize, const VN: usize, const VT: usize, const F: usize> {
+        vertices: [[f32; 3]; V],
+        normals: [[f32; 3]; VN],
+        uvs: [[f32; 2]; VT],
+        faces: [[(usize, usize, usize); 4]; 6],
+    }
+
+    impl<const V: usize, const VN: usize, const VT: usize, const F: usize> CubeObj<V, VN, VT, F> {
+        pub fn vertices(&self) -> HashMap<&'static str, Vec<ModelVertex>> {
+            let mut map = HashMap::new();
+
+            for (i, face) in [
+                (0, "top"),
+                (1, "front"),
+                (2, "left"),
+                (3, "bottom"),
+                (4, "right"),
+                (5, "back"),
+            ] {
+                let (v, t, n): (Vec<_>, Vec<_>, Vec<_>) = self.faces[i].into_iter().multiunzip();
+                let positions: [[f32; 3]; 4] = v
+                    .into_iter()
+                    .map(|i| self.vertices[i - 1])
+                    .collect_array()
+                    .unwrap();
+
+                let normals: [[f32; 3]; 4] = n
+                    .into_iter()
+                    .map(|i| self.normals[i - 1])
+                    .collect_array()
+                    .unwrap();
+
+                let tex_coords: [[f32; 2]; 4] = t
+                    .into_iter()
+                    .map(|i| self.uvs[i - 1])
+                    .collect_array()
+                    .unwrap();
+
+                let mut vec = vec![];
+                for i in 0..4 {
+                    let model_vertex = ModelVertex {
+                        position: positions[i],
+                        tex_coords: tex_coords[i],
+                        normal: normals[i],
+                    };
+
+                    vec.push(model_vertex);
+                }
+
+                map.insert(face, vec);
+            }
+
+            map
+        }
+    }
+
+    const DefaultCube: CubeObj<8, 6, 14, 6> = {
+        const P: f32 = 1.0;
+        const N: f32 = -1.0;
+        const Z: f32 = 0.0;
+
+        CubeObj {
+            vertices: [
+                [P, P, N],
+                [P, N, N],
+                [P, P, P],
+                [P, N, P],
+                [N, P, N],
+                [N, N, N],
+                [N, P, P],
+                [N, N, P],
+            ],
+            normals: [
+                [Z, P, Z],
+                [Z, Z, P],
+                [N, Z, Z],
+                [N, Z, N],
+                [P, Z, Z],
+                [Z, Z, N],
+            ],
+            uvs: [
+                [0.625, 0.5],
+                [0.875, 0.5],
+                [0.875, 0.75],
+                [0.625, 0.75],
+                [0.375, 0.75],
+                [0.625, 1.0],
+                [0.375, 1.0],
+                [0.375, 0.0],
+                [0.625, 0.0],
+                [0.625, 0.25],
+                [0.375, 0.25],
+                [0.125, 0.5],
+                [0.375, 0.5],
+                [0.125, 0.75],
+            ],
+            faces: [
+                [(1, 1, 1), (5, 2, 1), (7, 3, 1), (3, 4, 1)],    // Top
+                [(4, 5, 2), (3, 4, 2), (7, 6, 2), (8, 7, 2)],    // front
+                [(8, 8, 3), (7, 9, 3), (5, 10, 3), (6, 11, 3)],  //left
+                [(6, 12, 4), (2, 13, 4), (4, 5, 4), (8, 14, 4)], //bottom
+                [(2, 13, 5), (1, 1, 5), (3, 4, 5), (4, 5, 5)],   //right
+                [(6, 11, 6), (5, 10, 6), (1, 1, 6), (2, 13, 6)], //back
+            ],
+        }
+    };
 
     #[derive(Copy, Clone, Default, Debug)]
     pub struct Faces {
@@ -79,144 +187,11 @@ pub(crate) mod cube {
     }
 
     pub fn cube_vertices(scale: f32, (x, y, z): (f32, f32, f32)) -> Vec<ModelVertex> {
-        const P: f32 = 1.0;
-        const N: f32 = -1.0;
-        let front = vec![
-            ModelVertex {
-                position: [N, N, P],
-                normal: [0.0, 0.0, P],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [P, N, P],
-                normal: [0.0, 0.0, N],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [P, P, P],
-                normal: [P, 0.0, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [N, P, P],
-                normal: [N, 0.0, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-        ];
-        let back = vec![
-            ModelVertex {
-                position: [N, N, N],
-                normal: [0.0, P, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [N, P, N],
-                normal: [0.0, N, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [P, P, N],
-                normal: [0.0, 0.0, P],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [P, N, N],
-                normal: [0.0, 0.0, N],
-                tex_coords: [0.0, 0.5],
-            },
-        ];
-        let top = vec![
-            ModelVertex {
-                position: [N, P, N],
-                normal: [P, 0.0, 0.0],
-                tex_coords: [0.875000, 0.750000],
-            },
-            ModelVertex {
-                position: [N, P, P],
-                normal: [N, 0.0, 0.0],
-                tex_coords: [0.625000, 0.750000],
-            },
-            ModelVertex {
-                position: [P, P, P],
-                normal: [0.0, P, 0.0],
-                tex_coords: [0.625000, 0.500000],
-            },
-            ModelVertex {
-                position: [P, P, N],
-                normal: [0.0, N, 0.0],
-                tex_coords: [0.875000, 0.500000],
-            },
-        ];
-        let bottom = vec![
-            ModelVertex {
-                position: [N, N, N],
-                normal: [0.0, 0.0, P],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [P, N, N],
-                normal: [0.0, 0.0, N],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [P, N, P],
-                normal: [P, 0.0, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [N, N, P],
-                normal: [N, 0.0, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-        ];
-        let right = vec![
-            ModelVertex {
-                position: [P, N, N],
-                normal: [0.0, P, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [P, P, N],
-                normal: [0.0, N, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [P, P, P],
-                normal: [0.0, 0.0, P],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [P, N, P],
-                normal: [0.0, 0.0, N],
-                tex_coords: [0.0, 0.5],
-            },
-        ];
-        let left = vec![
-            ModelVertex {
-                position: [N, N, N],
-                normal: [P, 0.0, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [N, N, P],
-                normal: [N, 0.0, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [N, P, P],
-                normal: [0.0, P, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-            ModelVertex {
-                position: [N, P, N],
-                normal: [0.0, N, 0.0],
-                tex_coords: [0.0, 0.5],
-            },
-        ];
+        let cube_model = DefaultCube.vertices();
 
-        [front, back, top, bottom, right, left]
+        ["front", "back", "top", "bottom", "right", "left"]
             .into_iter()
-            .flatten()
+            .flat_map(|str| cube_model[str].clone())
             .map(|mut vertex| {
                 vertex.position = [
                     vertex.position[0] + x * scale,
@@ -246,21 +221,6 @@ pub(crate) mod cube {
                 all_indices.push(indices);
             }
         }
-
-        // let front = vec![0, 1, 2, 0, 2, 3];
-        // let back = vec![4, 5, 6, 4, 6, 7];
-        // let top = vec![8, 9, 10, 8, 10, 11];
-        // let bottom = vec![12, 13, 14, 12, 14, 15];
-        // let right = vec![16, 17, 18, 16, 18, 19];
-        // let left = vec![20, 21, 22, 20, 22, 23];
-        //
-        // Faces::arr(faces)
-        //     .iter()
-        //     .zip([front, back, top, bottom, right, left])
-        //     .filter_map(|(face, front)| face.then_some(front))
-        //     .flatten()
-        //     .map(|i| i + (n * vertices_count))
-        //     .collect_vec()
 
         all_indices
             .iter()

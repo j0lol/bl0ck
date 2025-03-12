@@ -705,7 +705,7 @@ impl Gfx {
                     label: Some("Normal Shader"),
                     source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
                 },
-                wgpu::PolygonMode::Fill,
+                wgpu::PolygonMode::Fill, // wireframe line wireframe
                 Some("Normal Render Pipeline"),
             );
 
