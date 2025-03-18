@@ -1,4 +1,5 @@
 use super::chunk::Chunk;
+use crate::ConnectionOnlyOnNative;
 use bincode::{Decode, Encode};
 use glam::ivec3;
 #[cfg(not(target_arch = "wasm32"))]
@@ -32,8 +33,10 @@ impl Distribution<BlockKind> for StandardUniform {
 pub struct WorldMap {
     pub chunks: RollGrid3D<Chunk>,
 }
-pub(crate) const RENDER_GRID_SIZE: usize = 15;
+pub(crate) const RENDER_GRID_SIZE: usize = 9;
 pub fn new() -> WorldMap {
+    let mut conn = rusqlite::Connection::open("./save.sqlite").unwrap();
+
     WorldMap {
         chunks: RollGrid3D::new(
             (
@@ -42,7 +45,7 @@ pub fn new() -> WorldMap {
                 RENDER_GRID_SIZE as _,
             ),
             (0, 0, 0),
-            |(x, y, z)| Chunk::load(ivec3(x, y, z)).unwrap(),
+            |(x, y, z)| Chunk::load(ivec3(x, y, z), &mut conn).unwrap(),
         ),
     }
 }

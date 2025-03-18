@@ -1,3 +1,5 @@
+use std::thread;
+
 use egui::{FontId, RichText};
 use egui_winit::EventResponse;
 use glam::ivec3;
@@ -9,6 +11,7 @@ use crate::{
         chunk::{Chunk, ChunkScramble},
         World,
     },
+    ConnectionOnlyOnNative,
 };
 
 const FPS_AVG_WINDOW: usize = 120;
@@ -146,7 +149,13 @@ impl EguiRenderer {
         self.frame_started = false;
     }
 
-    pub fn update(&mut self, gfx: &mut Gfx, world: &mut World, dt: instant::Duration) {
+    pub fn update(
+        &mut self,
+        gfx: &mut Gfx,
+        world: &mut World,
+        conn: &mut ConnectionOnlyOnNative,
+        dt: instant::Duration,
+    ) {
         let mut scale_factor = self.scale_factor;
         let (mut chunk_x, mut chunk_y, mut chunk_z) = self.chunk_influence;
         let (mut grid_x, mut grid_y, mut grid_z) = world.map.chunks.offset();
@@ -251,13 +260,28 @@ impl EguiRenderer {
                 ui.checkbox(&mut camera_load, "Camera position loads chunks");
                 ui.label("Move chunk window... ");
                 ui.horizontal(|ui| {
-                    ui.add_enabled(!camera_load, egui::DragValue::new(&mut grid_x).speed(0.1).update_while_editing(false));
+                    ui.add_enabled(
+                        !camera_load,
+                        egui::DragValue::new(&mut grid_x)
+                            .speed(0.1)
+                            .update_while_editing(false),
+                    );
                     ui.label("x ");
 
-                    ui.add_enabled(!camera_load, egui::DragValue::new(&mut grid_y).speed(0.1).update_while_editing(false));
+                    ui.add_enabled(
+                        !camera_load,
+                        egui::DragValue::new(&mut grid_y)
+                            .speed(0.1)
+                            .update_while_editing(false),
+                    );
                     ui.label("y ");
 
-                    ui.add_enabled(!camera_load, egui::DragValue::new(&mut grid_z).speed(0.1).update_while_editing(false));
+                    ui.add_enabled(
+                        !camera_load,
+                        egui::DragValue::new(&mut grid_z)
+                            .speed(0.1)
+                            .update_while_editing(false),
+                    );
                     ui.label("z.");
                 });
 
@@ -281,17 +305,17 @@ impl EguiRenderer {
                     if ui.button("Random").clicked() {
                         let c = Chunk::generate(pos, ChunkScramble::Random);
                         world.map.chunks.set(pos.into(), c);
-                        gfx.object.remake = true;
+                        world.remake = true;
                     }
                     if ui.button("Normal").clicked() {
                         let c = Chunk::generate(pos, ChunkScramble::Normal);
                         world.map.chunks.set(pos.into(), c);
-                        gfx.object.remake = true;
+                        world.remake = true;
                     }
                     if ui.button("Inverse").clicked() {
                         let c = Chunk::generate(pos, ChunkScramble::Inverse);
                         world.map.chunks.set(pos.into(), c);
-                        gfx.object.remake = true;
+                        world.remake = true;
                     }
                 });
 
@@ -299,7 +323,7 @@ impl EguiRenderer {
 
                 ui.horizontal(|ui| {
                     if ui.button("Save").clicked() {
-                        world.save().unwrap();
+                        world.save(conn).unwrap();
                     }
                 });
             });
@@ -309,18 +333,14 @@ impl EguiRenderer {
 
         gfx.camera.controller.load_chunks = camera_load;
 
-        if !camera_load {
-            if (grid_x, grid_y, grid_z) != world.map.chunks.offset() {
-                world
-                    .map
-                    .chunks
-                    .reposition((grid_x, grid_y, grid_z), |_old, new, chunk| {
-                        *chunk = Chunk::load(ivec3(new.0, new.1, new.2)).unwrap();
-                    });
-                gfx.object.remake = true;
-            }
+        if !camera_load && (grid_x, grid_y, grid_z) != world.map.chunks.offset() {
+            world
+                .map
+                .chunks
+                .reposition((grid_x, grid_y, grid_z), |_old, new, chunk| {
+                    *chunk = Chunk::load(ivec3(new.0, new.1, new.2), conn).unwrap();
+                });
+            world.remake = true;
         }
-
-
     }
 }

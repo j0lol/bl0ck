@@ -1,14 +1,15 @@
+use crate::concurrency::GameThread;
+use crate::world::{chunk::Chunk, map::RENDER_GRID_SIZE, World};
+use crate::ConnectionOnlyOnNative;
 use glam::{ivec3, vec3, IVec3, Mat4, Vec2, Vec3, Vec4};
 use instant::Duration;
 use itertools::Itertools;
+use std::sync::{Arc, Mutex};
 use winit::{
     dpi::PhysicalPosition,
     event::{ElementState, MouseScrollDelta},
     keyboard::KeyCode,
 };
-
-use crate::world::{chunk::Chunk, map::RENDER_GRID_SIZE, World};
-
 
 const MAX_CAMERA_PITCH: f32 = (3.0 / std::f32::consts::PI) - 0.0001;
 
@@ -118,7 +119,7 @@ impl CameraController {
             scroll: 0.,
             speed,
             sensitivity,
-            load_chunks: true,
+            load_chunks: false,
         }
     }
 
@@ -162,8 +163,9 @@ impl CameraController {
         &mut self,
         camera: &mut Camera,
         duration: Duration,
-        world: &mut World,
-        remake: &mut bool,
+        world: Arc<Mutex<World>>,
+        conn: &mut ConnectionOnlyOnNative,
+        world_thread: &mut GameThread<(), (i32, i32, i32)>,
     ) {
         let dt = duration.as_secs_f32();
         let movement = self.movement.vec3();
@@ -188,20 +190,25 @@ impl CameraController {
 
         if self.load_chunks {
             const BLOCK_UNIT_SIZE: i32 = 32;
-            let chunk_relative = IVec3::from(
-                (camera.position.x as i32 / BLOCK_UNIT_SIZE,
+            let chunk_relative = IVec3::from((
+                camera.position.x as i32 / BLOCK_UNIT_SIZE,
                 camera.position.y as i32 / BLOCK_UNIT_SIZE,
                 camera.position.z as i32 / BLOCK_UNIT_SIZE,
-            )) + IVec3::splat(-(RENDER_GRID_SIZE as i32/2));
-            if chunk_relative != world.map.chunks.offset().into() {
-                world
-                    .map
-                    .chunks
-                    .reposition((IVec3::from(chunk_relative)).into(), |_old, new, chunk| {
-                        *chunk = Chunk::load(ivec3(new.0, new.1, new.2)).unwrap();
-                    });
-                *remake = true;
+            )) + IVec3::splat(-(RENDER_GRID_SIZE as i32 / 2));
+            if chunk_relative != world.lock().unwrap().map.chunks.offset().into() {
+                let IVec3 { x, y, z } = chunk_relative;
+                world_thread.tx.send((x, y, z)).unwrap();
             }
+
+            // if chunk_relative != world.map.chunks.offset().into() {
+            //     world.map.chunks.reposition(
+            //         (IVec3::from(chunk_relative)).into(),
+            //         |_old, new, chunk| {
+            //             *chunk = Chunk::load(ivec3(new.0, new.1, new.2), conn).unwrap();
+            //         },
+            //     );
+            //     *remake = true;
+            // }
         }
 
         self.rotation = Vec2::ZERO;
@@ -235,4 +242,3 @@ impl CameraUniform {
         self.view_proj = projection.mat4() * camera.mat4();
     }
 }
-

@@ -1,4 +1,5 @@
 use super::map::BlockKind;
+use crate::ConnectionOnlyOnNative;
 use bincode::{Decode, Encode};
 use glam::{ivec3, IVec3};
 use itertools::Itertools;
@@ -98,25 +99,30 @@ impl Chunk {
         Chunk::generate_callback(method)(map_pos)
     }
 
-    pub fn save(&self, map_pos: IVec3) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save(
+        &self,
+        map_pos: IVec3,
+        conn: &mut ConnectionOnlyOnNative,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let config = bincode::config::standard();
-
-        let file_hash = calculate_hash(&map_pos);
-        let file_name = format!("chunk_{}.bl0ck", file_hash);
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let file_path = Path::new("./save/chunk/").join(Path::new(&file_name));
-            let mut file = File::create(&file_path).unwrap();
-            let encoded = bincode::encode_into_std_write(self, &mut file, config)?;
+            let encoded = bincode::encode_to_vec(self, config)?;
 
-            log::warn!("Wrote to file {file_name} with {encoded}b.");
+            let mut stmt = conn.prepare_cached(
+                r#"
+                INSERT INTO chunks (x,y,z,data)
+                VALUES (?,?,?,?)
+            "#,
+            )?;
+            stmt.insert((map_pos.x, map_pos.y, map_pos.z, encoded))?;
         }
 
         // We are going to use LocalStorage for web. I don't like it either.
         #[cfg(target_arch = "wasm32")]
         {
-            use base64::prelude::{BASE64_STANDARD, Engine};
+            use base64::prelude::{Engine, BASE64_STANDARD};
             let encoded = bincode::encode_to_vec(self, config)?;
             let encoded = BASE64_STANDARD.encode(encoded);
 
@@ -125,29 +131,49 @@ impl Chunk {
         }
         Ok(())
     }
-    fn load_from_file(map_pos: IVec3) -> Result<Option<Chunk>, Box<dyn std::error::Error>> {
+    fn load_from_file(
+        map_pos: IVec3,
+        conn: &mut ConnectionOnlyOnNative,
+    ) -> Result<Option<Chunk>, Box<dyn std::error::Error>> {
         let config = bincode::config::standard();
         let file_hash = calculate_hash(&map_pos);
         let file_name = format!("chunk_{}.bl0ck", file_hash);
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let file_path = Path::new("./save/chunk/").join(Path::new(&file_name));
-            if file_path.exists() {
-                log::warn!("Load Chunk!");
-                let mut file = File::open(file_path).unwrap();
+            // let file_path = Path::new("./save/chunk/").join(Path::new(&file_name));
+            // if file_path.exists() {
+            // log::warn!("Load Chunk!");
+            // let mut file = File::open(file_path).unwrap();
 
-                let decoded = bincode::decode_from_std_read(&mut file, config)?;
+            let mut stmt = conn.prepare_cached(
+                r#"
+                SELECT (data) from chunks
+                WHERE (x,y,z) == (?,?,?)
+            "#,
+            )?;
+            let i: Vec<u8> =
+                match stmt.query_row((map_pos.x, map_pos.y, map_pos.z), |f| f.get("data")) {
+                    Ok(x) => x,
+                    Err(rusqlite::Error::QueryReturnedNoRows) => {
+                        return Ok(None);
+                    }
+                    Err(e) => {
+                        return Err(e.into());
+                    }
+                };
 
-                Ok(Some(decoded))
-            } else {
-                log::warn!("Chunk not loaded!");
-                Ok(None)
-            }
+            let (decoded, _) = bincode::decode_from_slice(i.as_slice(), config)?;
+
+            Ok(Some(decoded))
+            // } else {
+            //     log::warn!("Chunk not loaded!");
+            //     Ok(None)
+            // }
         }
         #[cfg(target_arch = "wasm32")]
         {
-            use base64::prelude::{BASE64_STANDARD, Engine};
+            use base64::prelude::{Engine, BASE64_STANDARD};
             let store = web_sys::window().unwrap().local_storage().unwrap().unwrap();
             if let Ok(Some(s)) = store.get(&file_name) {
                 let s = BASE64_STANDARD.decode(s)?;
@@ -160,25 +186,28 @@ impl Chunk {
         }
     }
 
-    pub fn load(map_pos: IVec3) -> Result<Chunk, Box<dyn std::error::Error>> {
+    pub fn load(
+        map_pos: IVec3,
+        conn: &mut ConnectionOnlyOnNative,
+    ) -> Result<Chunk, Box<dyn std::error::Error>> {
         #[cfg(not(target_arch = "wasm32"))]
         let cached = CHUNK_FILE_CACHE.lock().unwrap().contains_key(&map_pos);
         #[cfg(target_arch = "wasm32")]
         let cached = false;
 
         if cached {
-            log::warn!("Cache hit!");
+            // log::warn!("Cache hit!");
             #[cfg(not(target_arch = "wasm32"))]
             return Ok(CHUNK_FILE_CACHE.lock().unwrap()[&map_pos]);
             #[cfg(target_arch = "wasm32")]
             return unreachable!();
         } else {
-            log::warn!("Cache miss!");
-            let chunk = match Chunk::load_from_file(map_pos)? {
+            // log::warn!("Cache miss!");
+            let chunk = match Chunk::load_from_file(map_pos, conn)? {
                 Some(chunk) => chunk,
                 None => {
                     let new_chunk = Chunk::generate(map_pos, ChunkScramble::Normal);
-                    new_chunk.save(map_pos)?;
+                    new_chunk.save(map_pos, conn)?;
                     new_chunk
                 }
             };
@@ -207,7 +236,7 @@ pub fn preload_chunk_cache() {
         let _3diter = itertools::iproduct!(-r..r, -r..r, -r..r);
 
         for (x, y, z) in _3diter {
-            let _ = Chunk::load(ivec3(x, y, z));
+            // let _ = Chunk::load(ivec3(x, y, z));
         }
     }
 }

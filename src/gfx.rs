@@ -4,6 +4,7 @@ mod model;
 mod resources;
 mod texture;
 
+use crate::concurrency::GameThread;
 use crate::gfx::camera::CameraUniform;
 use crate::gfx::model::DrawLight;
 use crate::world::chunk::{sl3get, sl3get_opt, CHUNK_SIZE};
@@ -13,12 +14,13 @@ use crate::{
     gui::EguiRenderer,
     world::map::{BlockKind, WorldMap},
     world::World,
-    Instance, InstanceRaw,
+    ConnectionOnlyOnNative, Instance, InstanceRaw,
 };
 use egui_wgpu::ScreenDescriptor;
 use glam::{uvec2, vec3, IVec3, Quat, Vec3};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_3};
-use std::sync::Arc;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use wgpu::util::DeviceExt;
 use wgpu::BindingResource;
 use winit::{
@@ -46,7 +48,6 @@ pub struct ObjectState {
     pub model: model::Model,
     pub instances: Vec<Instance>,
     pub instance_buffer: wgpu::Buffer,
-    pub remake: bool,
 }
 
 pub struct LightState {
@@ -624,7 +625,6 @@ impl Gfx {
                 model: obj_model,
                 instances,
                 instance_buffer,
-                remake: false,
             },
             light: LightState {
                 object: light,
@@ -754,14 +754,14 @@ impl Gfx {
             });
         self.object.instances = instances;
         self.object.instance_buffer = instance_buffer;
-        self.object.remake = false;
     }
 
     pub(crate) fn render(
         &mut self,
         egui: &mut Option<EguiRenderer>,
         window: Arc<Window>,
-        world: &mut World,
+        world: Arc<Mutex<World>>,
+        conn: &mut ConnectionOnlyOnNative,
         dt: instant::Duration,
     ) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
@@ -889,7 +889,7 @@ impl Gfx {
             };
             egui.begin_frame(&window);
 
-            egui.update(self, world, dt);
+            egui.update(self, &mut world.lock().unwrap(), conn, dt);
 
             egui.end_frame_and_draw(
                 &self.device,
@@ -907,13 +907,20 @@ impl Gfx {
         Ok(())
     }
 
-    pub fn update(&mut self, world: &mut World, dt: instant::Duration) {
+    pub fn update(
+        &mut self,
+        world: Arc<Mutex<World>>,
+        conn: &mut ConnectionOnlyOnNative,
+        thread: &mut GameThread<(), (i32, i32, i32)>,
+        dt: instant::Duration,
+    ) {
         // Camera update
         self.camera.controller.update_camera(
             &mut self.camera.object,
             dt,
-            world,
-            &mut self.object.remake,
+            world.clone(),
+            conn,
+            thread,
         );
         self.camera
             .uniform
@@ -940,9 +947,11 @@ impl Gfx {
             bytemuck::cast_slice(&[self.light.uniform]),
         );
 
+        let mut world = world.lock().unwrap();
         // Object update
-        if self.object.remake {
+        if world.remake {
             self.update_instance_buf(&world.map);
+            world.remake = false;
         }
     }
 

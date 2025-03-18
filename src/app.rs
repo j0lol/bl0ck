@@ -1,11 +1,15 @@
+use crate::world::chunk::Chunk;
 use crate::{
+    concurrency::GameThread,
     gfx::{Gfx, GfxBuilder, MaybeGfx},
     gui::EguiRenderer,
-    world::map::new,
-    world::World,
+    world::{map::new, World},
+    ConnectionOnlyOnNative,
 };
-use glam::dvec2;
-use std::sync::Arc;
+use glam::{dvec2, ivec3, IVec3};
+use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex, TryLockResult};
+use std::thread::spawn;
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, DeviceId, ElementState, KeyEvent, WindowEvent},
@@ -26,19 +30,60 @@ pub struct Application {
     gfx_state: MaybeGfx,
     window: Option<Arc<Window>>,
     egui: Option<EguiRenderer>,
-    world: World,
+    world: Arc<Mutex<World>>,
+    world_update_thread: GameThread<(), (i32, i32, i32)>,
     last_render_time: instant::Instant,
+    conn: ConnectionOnlyOnNative,
 }
 
 impl Application {
-    pub fn new(event_loop: &EventLoop<Gfx>, title: &str) -> Self {
+    pub fn new(event_loop: &EventLoop<Gfx>, title: &str, mut conn: rusqlite::Connection) -> Self {
+        let world = Arc::new(Mutex::new(World {
+            map: new(),
+            remake: false,
+        }));
         Self {
             window_attributes: Window::default_attributes().with_title(title),
             gfx_state: MaybeGfx::Builder(GfxBuilder::new(event_loop.create_proxy())),
             window: None,
             egui: None,
-            world: World { map: new() },
+            world: world.clone(),
+            world_update_thread: {
+                let (tx, rx) = channel();
+
+                let thread = spawn(move || {
+                    let w = world;
+                    let mut conn = rusqlite::Connection::open("./save.sqlite").unwrap();
+
+                    loop {
+                        println!("Looping!");
+
+                        let Ok((x, y, z)) = rx.recv() else {
+                            break;
+                        };
+
+                        let Ok(ref mut w) = w.lock() else {
+                            log::error!("Poisoned mutex?");
+                            break;
+                        };
+
+                        w.map.chunks.reposition(
+                            IVec3::from((x, y, z)).into(),
+                            |_old, new, chunk| {
+                                *chunk =
+                                    Chunk::load(ivec3(new.0, new.1, new.2), &mut conn).unwrap();
+                            },
+                        );
+
+                        w.remake = true;
+                        dbg!(&w.map.chunks.offset());
+                    }
+                });
+
+                GameThread::new(thread, tx)
+            },
             last_render_time: instant::Instant::now(),
+            conn,
         }
     }
 }
@@ -204,11 +249,24 @@ impl ApplicationHandler<Gfx> for Application {
                     let dt = now - self.last_render_time;
                     self.last_render_time = now;
 
+                    // let mut world = self.world.lock().unwrap();
+
                     window.request_redraw();
-                    match gfx.render(&mut self.egui, window.clone(), &mut self.world, dt) {
+                    match gfx.render(
+                        &mut self.egui,
+                        window.clone(),
+                        self.world.clone(),
+                        &mut self.conn,
+                        dt,
+                    ) {
                         Ok(_) => {
                             // TODO CITE https://github.com/kaphula/winit-egui-wgpu-template/blob/master/src/app.rs#L3
-                            gfx.update(&mut self.world, dt);
+                            gfx.update(
+                                self.world.clone(),
+                                &mut self.conn,
+                                &mut self.world_update_thread,
+                                dt,
+                            );
                         }
                         Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                             gfx.resize(window.inner_size());

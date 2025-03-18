@@ -1,6 +1,7 @@
 #![allow(rust_analyzer::inactive_code)]
 
 mod app;
+mod concurrency;
 mod gfx;
 mod gui;
 mod world;
@@ -16,6 +17,12 @@ struct Instance {
     position: Vec3,
     rotation: Quat,
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+type ConnectionOnlyOnNative = rusqlite::Connection;
+
+#[cfg(target_arch = "wasm32")]
+type ConnectionOnlyOnNative = ();
 
 impl Instance {
     fn to_raw(&self) -> InstanceRaw {
@@ -36,8 +43,6 @@ struct InstanceRaw {
 
 impl InstanceRaw {
     fn desc() -> wgpu::VertexBufferLayout<'static> {
-
-
         wgpu::VertexBufferLayout {
             array_stride: size_of::<InstanceRaw>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
@@ -98,9 +103,25 @@ pub async fn run() {
     init_logger();
 
     log::info!("Hello world!");
-    preload_chunk_cache();
+    // preload_chunk_cache();
+
+    let conn = rusqlite::Connection::open("./save.sqlite").unwrap();
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS chunks (
+            x INTEGER,
+            y INTEGER,
+            z INTEGER,
+            data BLOB,
+            PRIMARY KEY (x,y,z)
+        )
+    "#,
+        (),
+    )
+    .unwrap();
+
     let event_loop = EventLoop::with_user_event().build().unwrap_throw();
 
-    let mut app = app::Application::new(&event_loop, "BL0CK");
+    let mut app = app::Application::new(&event_loop, "BL0CK", conn);
     event_loop.run_app(&mut app).unwrap();
 }
