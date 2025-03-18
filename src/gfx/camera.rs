@@ -214,11 +214,7 @@ impl CameraController {
         self.rotation = Vec2::ZERO;
 
         // Keep the camera's angle from going too high/low.
-        if camera.pitch < -MAX_CAMERA_PITCH {
-            camera.pitch = -MAX_CAMERA_PITCH;
-        } else if camera.pitch > MAX_CAMERA_PITCH {
-            camera.pitch = MAX_CAMERA_PITCH;
-        }
+        camera.pitch = camera.pitch.clamp(-MAX_CAMERA_PITCH, MAX_CAMERA_PITCH);
     }
 }
 

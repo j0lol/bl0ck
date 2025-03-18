@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use bincode::{Decode, Encode};
 use rollgrid::rollgrid3d::RollGrid3D;
+use std::collections::HashMap;
 
 use super::{chunk::Chunk, map::WorldMap};
-
 
 #[derive(Decode, Encode)]
 struct EncodedWorldMap {
@@ -13,7 +12,7 @@ struct EncodedWorldMap {
 }
 
 impl EncodedWorldMap {
-    fn to_rollgrid(self) -> WorldMap {
+    fn to_rollgrid(&self) -> WorldMap {
         WorldMap {
             chunks: RollGrid3D::new(self.size, self.grid_offset, |p| self.chunks[&p]),
         }
